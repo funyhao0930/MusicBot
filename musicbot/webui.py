@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import logging
 import math
 import pathlib
 import re
@@ -17,6 +18,8 @@ from aiohttp import web
 
 from .webui_i18n import localize_option, localize_permission_group
 
+
+log = logging.getLogger(__name__)
 
 _SENSITIVE_PARTS = ("token", "secret", "password", "cookie", "oauth")
 _LOG_SECRET_RE = re.compile(
@@ -184,6 +187,8 @@ class MusicBotWebUI:
         self.csrf_token = secrets.token_urlsafe(32)
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
+        self._playlist_title_cache: Dict[str, str] = {}
+        self._playlist_title_semaphore = asyncio.Semaphore(6)
 
     @web.middleware
     async def _security_middleware(
@@ -225,6 +230,10 @@ class MusicBotWebUI:
                 web.post("/api/config/reload", self._handle_config_reload),
                 web.get("/api/logs", self._handle_logs),
                 web.get("/api/playlists", self._handle_playlists),
+                web.get(
+                    "/api/playlists/{name}/titles",
+                    self._handle_playlist_titles,
+                ),
                 web.post("/api/playlists", self._handle_playlists_post),
                 web.delete(
                     "/api/playlists/{name}/{index}",
@@ -684,11 +693,41 @@ class MusicBotWebUI:
     async def _playlist_payload(self, name: str) -> Dict[str, Any]:
         playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
         await playlist.load()
+        tracks = [
+            {
+                "source": source,
+                "title": self._playlist_title_cache.get(source, source),
+            }
+            for source in playlist
+        ]
         return {
             "name": name,
             "filename": playlist.filename,
-            "tracks": list(playlist),
+            "tracks": tracks,
         }
+
+    async def _playlist_track_payload(self, source: str) -> Dict[str, str]:
+        cached_title = self._playlist_title_cache.get(source)
+        if cached_title is not None:
+            return {"source": source, "title": cached_title}
+
+        title = source
+        try:
+            async with self._playlist_title_semaphore:
+                info = await self.bot.downloader.extract_info(
+                    source, download=False, process=True
+                )
+            extracted_title = str(getattr(info, "title", "") or "").strip()
+            if extracted_title:
+                title = extracted_title
+        except Exception:
+            log.debug(
+                "Unable to resolve a playlist track title; using its original source.",
+                exc_info=True,
+            )
+
+        self._playlist_title_cache[source] = title
+        return {"source": source, "title": title}
 
     async def _handle_playlists(self, _request: web.Request) -> web.Response:
         manager = self.bot.playlist_mgr
@@ -697,6 +736,19 @@ class MusicBotWebUI:
         for name in sorted(manager.playlist_names, key=str.casefold):
             playlists.append(await self._playlist_payload(name))
         return web.json_response({"ok": True, "playlists": playlists})
+
+    async def _handle_playlist_titles(self, request: web.Request) -> web.Response:
+        try:
+            name = self._playlist_name(request.match_info["name"])
+            playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
+            await playlist.load()
+            tracks = await asyncio.gather(
+                *(self._playlist_track_payload(source) for source in playlist)
+            )
+        except (OSError, ValueError) as exc:
+            return self._error(str(exc), status=400)
+
+        return web.json_response({"ok": True, "name": name, "tracks": tracks})
 
     async def _handle_playlists_post(self, request: web.Request) -> web.Response:
         try:

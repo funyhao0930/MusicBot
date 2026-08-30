@@ -128,7 +128,14 @@ class _Player:
 
 
 class _Downloader:
+    def __init__(self):
+        self.calls = []
+        self.fail_queries = set()
+
     async def extract_info(self, query, **_kwargs):
+        self.calls.append(query)
+        if query in self.fail_queries:
+            raise RuntimeError("metadata lookup failed")
         return SimpleNamespace(
             title=f"Result for {query}",
             url="https://example.test/result",
@@ -315,8 +322,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('data-action="repeat_song"', html)
         self.assertIn("關閉循環", html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=3', html)
-        self.assertIn('/assets/app.js?v=7', html)
+        self.assertIn('/assets/styles.css?v=4', html)
+        self.assertIn('/assets/app.js?v=9', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -344,6 +351,7 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(r'"all": "\u5168\u90e8\u5faa\u74b0"', javascript)
         self.assertIn(r'"off": "\u95dc\u9589\u5faa\u74b0"', javascript)
         self.assertIn('repeat.dataset.action = nextAction', javascript)
+        self.assertIn('class="button ghost playlist-queue"', javascript)
 
     async def test_long_track_titles_scroll_only_when_they_overflow(self):
         response = await self.client.get("/")
@@ -663,7 +671,8 @@ const document = {
   querySelector(selector) { return elements.get(selector) || createElement(); },
   querySelectorAll() { return []; },
 };
-let apiCalls = 0;
+let playlistCalls = 0;
+let titleCalls = 0;
 const context = {
   document,
   window: { confirm() { return false; }, prompt() { return null; } },
@@ -680,18 +689,34 @@ vm.createContext(context);
 vm.runInContext(source, context);
 vm.runInContext(`
   api = async path => {
-    apiCalls += 1;
-    return {
-      playlists: [{
-        name: "default",
-        tracks: Array.from({ length: 2530 }, (_, index) => "track-" + index),
-      }],
-    };
+    if (path === "/api/playlists") {
+      playlistCalls += 1;
+      return {
+        playlists: [{
+          name: "default",
+          tracks: Array.from({ length: 2530 }, (_, index) => "track-" + index),
+        }],
+      };
+    }
+    if (path === "/api/playlists/default/titles") {
+      titleCalls += 1;
+      return {
+        tracks: Array.from({ length: 2530 }, (_, index) => ({
+          source: "track-" + index,
+          title: "Title " + index,
+        })),
+      };
+    }
+    throw new Error("unexpected API path: " + path);
   };
 `, context);
-Object.defineProperty(context, "apiCalls", {
-  get() { return apiCalls; },
-  set(value) { apiCalls = value; },
+Object.defineProperty(context, "playlistCalls", {
+  get() { return playlistCalls; },
+  set(value) { playlistCalls = value; },
+});
+Object.defineProperty(context, "titleCalls", {
+  get() { return titleCalls; },
+  set(value) { titleCalls = value; },
 });
 
 (async () => {
@@ -700,10 +725,16 @@ Object.defineProperty(context, "apiCalls", {
   if (firstCount > 101) {
     throw new Error(`initial render created ${firstCount} nodes instead of one batch`);
   }
-  if (apiCalls !== 1) throw new Error(`expected one API call, got ${apiCalls}`);
+  if (playlistCalls !== 1) {
+    throw new Error(`expected one playlist API call, got ${playlistCalls}`);
+  }
+  if (titleCalls !== 1) {
+    throw new Error(`expected one title API call, got ${titleCalls}`);
+  }
 
   await vm.runInContext("loadPlaylists()", context);
-  if (apiCalls !== 1) throw new Error("cached playlist data was fetched again");
+  if (playlistCalls !== 1) throw new Error("cached playlist data was fetched again");
+  if (titleCalls !== 1) throw new Error("cached playlist titles were fetched again");
 
   const loadMore = elements.get("#playlist-tracks").children.at(-1);
   if (!loadMore || !loadMore.listeners.click) {
@@ -713,6 +744,239 @@ Object.defineProperty(context, "apiCalls", {
   const secondCount = elements.get("#playlist-tracks").children.length;
   if (secondCount <= firstCount || secondCount > 201) {
     throw new Error(`load-more rendered an unexpected node count: ${secondCount}`);
+  }
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_playlist_page_selects_a_non_empty_list_before_titles_finish(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+
+function createElement(tag = "div") {
+  const children = [];
+  const element = {
+    tagName: tag.toUpperCase(),
+    children,
+    hidden: false,
+    disabled: false,
+    dataset: {},
+    style: {},
+    textContent: "",
+    className: "",
+    classList: { add() {}, remove() {}, toggle() {} },
+    listeners: {},
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+    append(...nodes) { children.push(...nodes); },
+    replaceChildren(...nodes) { children.splice(0, children.length, ...nodes); },
+    querySelectorAll() { return []; },
+    querySelector(selector) {
+      if (!this._parts) this._parts = {};
+      if (!this._parts[selector]) this._parts[selector] = createElement();
+      return this._parts[selector];
+    },
+  };
+  Object.defineProperty(element, "innerHTML", {
+    set() {},
+    get() { return ""; },
+  });
+  return element;
+}
+
+const elements = new Map();
+for (const id of [
+  "#playlist-title", "#playlist-count", "#playlist-empty",
+  "#playlist-add-form", "#playlist-tracks", "#playlist-tabs",
+]) elements.set(id, createElement());
+elements.get("#playlist-add-form").querySelectorAll = () => [];
+
+const document = {
+  addEventListener() {},
+  createElement,
+  querySelector(selector) { return elements.get(selector) || createElement(); },
+  querySelectorAll() { return []; },
+};
+const calls = [];
+const context = {
+  document,
+  window: { confirm() { return false; }, prompt() { return null; } },
+  console,
+  fetch: async () => { throw new Error("unexpected fetch"); },
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout(callback) { callback(); },
+  URLSearchParams,
+  encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+vm.runInContext(`
+  api = async path => {
+    calls.push(path);
+    if (path === "/api/playlists") {
+      return {
+        playlists: [
+          { name: "default", tracks: [] },
+          {
+            name: "西呱歌單",
+            tracks: [{
+              source: "https://example.test/night-drive",
+              title: "https://example.test/night-drive",
+            }],
+          },
+        ],
+      };
+    }
+    if (path === "/api/playlists/%E8%A5%BF%E5%91%B1%E6%AD%8C%E5%96%AE/titles") {
+      return new Promise(() => {});
+    }
+    throw new Error("unexpected API path: " + path);
+  };
+`, context);
+Object.defineProperty(context, "calls", { get() { return calls; } });
+
+(async () => {
+  await vm.runInContext("loadPlaylists()", context);
+  if (vm.runInContext("state.currentPlaylist", context) !== "西呱歌單") {
+    throw new Error("the first non-empty playlist was not selected");
+  }
+  if (elements.get("#playlist-title").textContent !== "西呱歌單") {
+    throw new Error("playlist title was not rendered before metadata completed");
+  }
+  if (elements.get("#playlist-tracks").children.length !== 1) {
+    throw new Error("playlist source was not rendered immediately");
+  }
+  if (!calls.includes("/api/playlists/%E8%A5%BF%E5%91%B1%E6%AD%8C%E5%96%AE/titles")) {
+    throw new Error("background title loading did not start");
+  }
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_playlist_track_button_adds_source_to_current_guild_queue(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+
+function createElement(tag = "div") {
+  const children = [];
+  const element = {
+    tagName: tag.toUpperCase(),
+    children,
+    hidden: false,
+    disabled: false,
+    dataset: {},
+    style: {},
+    textContent: "",
+    className: "",
+    classList: { add() {}, remove() {}, toggle() {} },
+    listeners: {},
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+    append(...nodes) { children.push(...nodes); },
+    replaceChildren(...nodes) { children.splice(0, children.length, ...nodes); },
+    querySelectorAll() { return []; },
+    querySelector(selector) {
+      if (!this._parts) this._parts = {};
+      if (!this._parts[selector]) this._parts[selector] = createElement();
+      return this._parts[selector];
+    },
+  };
+  Object.defineProperty(element, "innerHTML", {
+    set() {},
+    get() { return ""; },
+  });
+  return element;
+}
+
+const elements = new Map();
+for (const id of [
+  "#playlist-title", "#playlist-count", "#playlist-empty",
+  "#playlist-add-form", "#playlist-tracks", "#playlist-tabs",
+  "#queue-list", "#queue-count", "#queue-empty", "#toast-region",
+]) elements.set(id, createElement());
+elements.get("#playlist-add-form").querySelectorAll = () => [];
+
+const document = {
+  addEventListener() {},
+  createElement,
+  querySelector(selector) { return elements.get(selector) || createElement(); },
+  querySelectorAll() { return []; },
+};
+const calls = [];
+const context = {
+  document,
+  window: { confirm() { return false; }, prompt() { return null; } },
+  console,
+  fetch: async () => { throw new Error("unexpected fetch"); },
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout(callback) { callback(); },
+  URLSearchParams,
+  encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+vm.runInContext(`
+  state.guildId = "1363416878059487264";
+  state.currentPlaylist = "default";
+  state.playlists = [{
+    name: "default",
+    tracks: [{ title: "Night Drive", source: "https://example.test/night-drive" }],
+  }];
+  api = async (path, options) => {
+    calls.push({ path, body: options.body });
+    return {
+      entry: { title: "Night Drive" },
+      queue: [{
+        title: "Night Drive",
+        url: "https://example.test/night-drive",
+        duration: 180,
+        requested_by: "Auto playlist",
+      }],
+    };
+  };
+  renderPlaylistEditor();
+`, context);
+Object.defineProperty(context, "calls", { get() { return calls; } });
+
+(async () => {
+  const row = elements.get("#playlist-tracks").children[0];
+  if (!row) throw new Error("playlist row was not rendered");
+  const queueButton = row.querySelector(".playlist-queue");
+  if (!queueButton.listeners.click) throw new Error("queue button has no click handler");
+  await queueButton.listeners.click();
+  if (calls.length !== 1) throw new Error(`expected one API call, got ${calls.length}`);
+  if (calls[0].path !== "/api/queue/add") throw new Error("wrong queue endpoint");
+  if (calls[0].body.guild_id !== "1363416878059487264") {
+    throw new Error("queue request used the wrong guild");
+  }
+  if (calls[0].body.query !== "https://example.test/night-drive") {
+    throw new Error("queue request did not use the playlist source");
   }
 })().catch(error => {
   console.error(error);
@@ -998,7 +1262,24 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
         self.assertEqual(response.status, 200)
         payload = await response.json()
         self.assertEqual(payload["playlists"][0]["name"], "default")
-        self.assertEqual(payload["playlists"][0]["tracks"], ["track one"])
+        self.assertEqual(
+            payload["playlists"][0]["tracks"],
+            [{"source": "track one", "title": "track one"}],
+        )
+        self.assertEqual(self.bot.downloader.calls, [])
+
+        response = await self.client.get("/api/playlists/default/titles")
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(
+            payload["tracks"],
+            [{"source": "track one", "title": "Result for track one"}],
+        )
+        self.assertEqual(self.bot.downloader.calls, ["track one"])
+
+        response = await self.client.get("/api/playlists/default/titles")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.bot.downloader.calls, ["track one"])
 
         response = await self.client.post(
             "/api/playlists",
@@ -1029,6 +1310,19 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
         )
         self.assertEqual(response.status, 200)
         self.assertEqual(self.bot.playlist_mgr.playlists["late-night"].data, [])
+
+    async def test_playlist_title_falls_back_to_source_when_lookup_fails(self):
+        source = "https://example.test/unavailable"
+        self.bot.playlist_mgr.playlists["default"].data = [source]
+        self.bot.downloader.fail_queries.add(source)
+
+        response = await self.client.get("/api/playlists/default/titles")
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(
+            payload["tracks"],
+            [{"source": source, "title": source}],
+        )
 
     async def test_playlist_name_rejects_path_traversal(self):
         response = await self.client.post(

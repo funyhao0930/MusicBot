@@ -13,6 +13,7 @@ const state = {
   settings: [],
   playlists: [],
   playlistsLoaded: false,
+  playlistTitleLoads: {},
   playlistVisibleCounts: {},
   currentPlaylist: "",
   permissions: [],
@@ -439,10 +440,35 @@ function renderPlaylistEditor() {
     : 0;
   const visibleTracks = tracks.slice(0, visibleCount);
   const rows = visibleTracks.map((track, index) => {
+    const source = typeof track === "string" ? track : (track?.source || "");
+    const title = typeof track === "string" ? track : (track?.title || source);
     const row = document.createElement("div");
     row.className = "playlist-track";
-    row.innerHTML = `<span class="queue-index">${String(index + 1).padStart(2, "0")}</span><span class="playlist-track-copy"></span><button class="queue-remove" type="button">移除</button>`;
-    $(".playlist-track-copy", row).textContent = track;
+    row.innerHTML = `<span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="playlist-track-copy"><strong></strong><small></small></div><div class="playlist-track-actions"><button class="button ghost playlist-queue" type="button">加入隊列</button><button class="queue-remove" type="button">移除</button></div>`;
+    $("strong", row).textContent = title;
+    $("small", row).textContent = source;
+    const queueButton = $(".playlist-queue", row);
+    queueButton.addEventListener("click", async () => {
+      if (!state.guildId) {
+        toast("請先選擇 Discord 伺服器", "error");
+        return;
+      }
+      queueButton.disabled = true;
+      queueButton.textContent = "加入中";
+      try {
+        const result = await api("/api/queue/add", {
+          method: "POST",
+          body: { guild_id: state.guildId, query: source },
+        });
+        renderQueue(result.queue);
+        toast(`已加入 ${result.entry.title}`);
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        queueButton.disabled = false;
+        queueButton.textContent = "加入隊列";
+      }
+    });
     $(".queue-remove", row).addEventListener("click", async () => {
       row.classList.add("is-removing");
       try {
@@ -475,7 +501,10 @@ function renderPlaylistEditor() {
 
 function renderPlaylists() {
   if (!state.playlists.some(item => item.name === state.currentPlaylist)) {
-    state.currentPlaylist = state.playlists[0]?.name || "";
+    state.currentPlaylist = (
+      state.playlists.find(item => item.tracks.length > 0)
+      || state.playlists[0]
+    )?.name || "";
   }
   const tabs = $("#playlist-tabs");
   tabs.replaceChildren(...state.playlists.map(playlist => {
@@ -486,10 +515,26 @@ function renderPlaylists() {
     button.addEventListener("click", () => {
       state.currentPlaylist = playlist.name;
       renderPlaylists();
+      void loadPlaylistTitles(playlist.name);
     });
     return button;
   }));
   renderPlaylistEditor();
+}
+
+async function loadPlaylistTitles(name) {
+  if (!name || state.playlistTitleLoads[name]) return;
+  state.playlistTitleLoads[name] = "loading";
+  try {
+    const result = await api(`/api/playlists/${encodeURIComponent(name)}/titles`);
+    const target = state.playlists.find(item => item.name === name);
+    if (target) target.tracks = result.tracks;
+    state.playlistTitleLoads[name] = "loaded";
+    if (state.currentPlaylist === name) renderPlaylistEditor();
+  } catch (error) {
+    delete state.playlistTitleLoads[name];
+    toast(error.message, "error");
+  }
 }
 
 async function loadPlaylists(force = false) {
@@ -498,8 +543,12 @@ async function loadPlaylists(force = false) {
     const result = await api("/api/playlists");
     state.playlists = result.playlists;
     state.playlistsLoaded = true;
-    if (force) state.playlistVisibleCounts = {};
+    if (force) {
+      state.playlistTitleLoads = {};
+      state.playlistVisibleCounts = {};
+    }
     renderPlaylists();
+    void loadPlaylistTitles(state.currentPlaylist);
   } catch (error) {
     toast(error.message, "error");
   }
