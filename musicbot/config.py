@@ -886,6 +886,41 @@ class Config:
             ),
         )
 
+        self.webui_enabled: bool = self.register.init_option(
+            section="WebUI",
+            option="WebUIEnabled",
+            dest="webui_enabled",
+            getter="getboolean",
+            default=ConfigDefaults.webui_enabled,
+            comment="Enable the local MusicBot browser control center.",
+        )
+        self.webui_host: str = self.register.init_option(
+            section="WebUI",
+            option="WebUIHost",
+            dest="webui_host",
+            default=ConfigDefaults.webui_host,
+            comment=(
+                "Host address used by the local browser control center. "
+                "Only 127.0.0.1 or localhost are accepted."
+            ),
+        )
+        self.webui_port: int = self.register.init_option(
+            section="WebUI",
+            option="WebUIPort",
+            dest="webui_port",
+            getter="getint",
+            default=ConfigDefaults.webui_port,
+            comment="Local TCP port used by the browser control center.",
+        )
+        self.webui_auto_open: bool = self.register.init_option(
+            section="WebUI",
+            option="WebUIAutoOpen",
+            dest="webui_auto_open",
+            getter="getboolean",
+            default=ConfigDefaults.webui_auto_open,
+            comment="Open the local browser control center when MusicBot starts.",
+        )
+
         # Convert all path constants into config as pathlib.Path objects.
         self.data_path = pathlib.Path(DEFAULT_DATA_DIR).resolve()
         self.server_names_path = self.data_path.joinpath(DATA_FILE_SERVERS)
@@ -923,6 +958,8 @@ class Config:
         :raises: musicbot.exceptions.HelpfulError
             if some validation failed that the user needs to correct.
         """
+        self._normalize_webui_settings()
+
         if self.logs_max_kept > MAXIMUM_LOGS_LIMIT:
             log.warning(
                 "Cannot store more than %s log files. Option LogsMaxKept will be limited instead.",
@@ -1041,6 +1078,25 @@ class Config:
             )
             # make sure the user sees this.
             time.sleep(3)
+
+    def _normalize_webui_settings(self) -> None:
+        """Keep the Web UI local-only and ensure the configured port is usable."""
+        host = str(self.webui_host).strip().lower()
+        if host not in {"127.0.0.1", "localhost"}:
+            log.warning(
+                "WebUIHost must be local-only. Falling back to %s.",
+                ConfigDefaults.webui_host,
+            )
+            self.webui_host = ConfigDefaults.webui_host
+        else:
+            self.webui_host = host
+
+        if not 1 <= int(self.webui_port) <= 65535:
+            log.warning(
+                "WebUIPort is outside the valid TCP port range. Falling back to %s.",
+                ConfigDefaults.webui_port,
+            )
+            self.webui_port = ConfigDefaults.webui_port
 
     async def async_validate(self, bot: "MusicBot") -> None:
         """
@@ -1243,6 +1299,11 @@ class ConfigDefaults:
 
     spotify_clientid: str = ""
     spotify_clientsecret: str = ""
+
+    webui_enabled: bool = True
+    webui_host: str = "127.0.0.1"
+    webui_port: int = 8765
+    webui_auto_open: bool = True
 
     command_prefix: str = "!"
     commands_via_mention: bool = True

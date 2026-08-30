@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -130,6 +131,7 @@ class MusicPlayer(EventEmitter, Serializable):
         self._current_player: Optional[VoiceClient] = None
         self._current_entry: Optional[EntryTypes] = None
         self._stderr_future: Optional[AsyncFuture] = None
+        self._seek_position: Optional[float] = None
 
         self._source: Optional[SourcePlaybackCounter] = None
 
@@ -177,6 +179,25 @@ class MusicPlayer(EventEmitter, Serializable):
             "MusicPlayer.skip() is called:  %s", repr(self)
         )
         self._kill_current_player()
+
+    def seek(self, position: float) -> None:
+        """Restart the current entry at an absolute position in seconds."""
+        entry = self._current_entry
+        if entry is None:
+            raise ValueError("Cannot seek when nothing is playing")
+        if entry.duration is None:
+            raise ValueError("Cannot seek a track with an unknown duration")
+        if not hasattr(entry, "set_start_time"):
+            raise ValueError("Seeking is not supported for streams")
+
+        target = float(position)
+        if not math.isfinite(target) or target < 0 or target > entry.duration:
+            raise ValueError("Seek position is outside the current track")
+
+        self._seek_position = target
+        if not self._kill_current_player():
+            self._seek_position = None
+            raise RuntimeError("Playback source is not available for seeking")
 
     def stop(self) -> None:
         """
@@ -274,7 +295,14 @@ class MusicPlayer(EventEmitter, Serializable):
             log.debug("Playback finished, but _current_entry is None.")
             return
 
-        if self.repeatsong:
+        seek_position = self._seek_position
+        self._seek_position = None
+        is_seeking = seek_position is not None
+
+        if is_seeking:
+            entry.set_start_time(seek_position)
+            self.playlist.entries.appendleft(entry)
+        elif self.repeatsong:
             self.playlist.entries.appendleft(entry)
         elif self.loopqueue:
             self.playlist.entries.append(entry)
@@ -308,7 +336,7 @@ class MusicPlayer(EventEmitter, Serializable):
             return
 
         # ensure file cleanup is handled if nothing was wrong with playback.
-        if not self.bot.config.save_videos and entry:
+        if not is_seeking and not self.bot.config.save_videos and entry:
             self.bot.create_task(
                 self._handle_file_cleanup(entry), name="MB_CacheCleanup"
             )

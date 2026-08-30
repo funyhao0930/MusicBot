@@ -61,6 +61,7 @@ from .permissions import PermissionGroup, Permissions, PermissionsDefaults
 from .player import MusicPlayer
 from .playlist import Playlist
 from .spotify import Spotify
+from .webui import MusicBotWebUI
 from .utils import (
     _func_,
     count_members_in_voice,
@@ -196,6 +197,7 @@ class MusicBot(discord.Client):
 
         self.spotify: Optional[Spotify] = None
         self.session: Optional[aiohttp.ClientSession] = None
+        self.webui: Optional[MusicBotWebUI] = None
 
         intents = discord.Intents.all()
         intents.typing = False
@@ -326,9 +328,47 @@ class MusicBot(discord.Client):
             )
 
         log.info("Initialized, now connecting to discord.")
+        await self._start_webui()
         # this creates an output similar to a progress indicator.
         muffle_discord_console_log()
         self.create_task(self._test_network(), name="MB_PingTest")
+
+    async def _start_webui(self) -> None:
+        """Start the optional local browser control center without blocking Discord."""
+        if not self.config.webui_enabled or self.webui is not None:
+            return
+
+        webui = MusicBotWebUI(
+            self,
+            host=self.config.webui_host,
+            port=self.config.webui_port,
+            auto_open=self.config.webui_auto_open,
+        )
+        try:
+            await webui.start()
+        except OSError:
+            log.exception(
+                "Could not start MusicBot Web UI on http://%s:%s",
+                self.config.webui_host,
+                self.config.webui_port,
+            )
+            self.webui = None
+            return
+
+        self.webui = webui
+        log.info(
+            "MusicBot Web UI is available at http://%s:%s",
+            self.config.webui_host,
+            self.config.webui_port,
+        )
+
+    async def _stop_webui(self) -> None:
+        """Release the local browser control center and its listening socket."""
+        if self.webui is None:
+            return
+        webui = self.webui
+        self.webui = None
+        await webui.stop()
 
     async def _test_network(self) -> None:
         """
@@ -2086,6 +2126,8 @@ class MusicBot(discord.Client):
             ) from e
 
         finally:
+            await self._stop_webui()
+
             # Shut down the thread pool executor.
             log.info("Waiting for download threads to finish up...")
             # We can't kill the threads in ThreadPoolExecutor.  User can Ctrl+C though.
@@ -3708,10 +3750,6 @@ class MusicBot(discord.Client):
                 expire_in=30,
             )
 
-        entry = _player.current_entry
-        entry.set_start_time(f_seek_time)
-        _player.playlist.insert_entry_at_index(0, entry)
-
         # handle history playlist updates.
         if (
             self.config.enable_queue_history_global
@@ -3719,7 +3757,7 @@ class MusicBot(discord.Client):
         ):
             self.server_data[guild.id].current_playing_url = ""
 
-        _player.skip()
+        _player.seek(f_seek_time)
 
         return Response(
             f"Seeking to time `{seek_time}` (`{f_seek_time:.2f}` seconds) in the current song.",

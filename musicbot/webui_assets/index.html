@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>MusicBot 控制中心</title>
+  <link rel="stylesheet" href="/assets/styles.css?v=2">
+</head>
+<body>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主要導覽">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div>
+          <strong>MusicBot</strong>
+          <small>本機控制中心</small>
+        </div>
+      </div>
+
+      <nav class="nav-list" id="main-nav">
+        <button class="nav-item is-active" data-page="dashboard"><span>控制台</span><small>播放與佇列</small></button>
+        <button class="nav-item" data-page="playlists"><span>播放清單</span><small>自動播放</small></button>
+        <button class="nav-item" data-page="settings"><span>設定</span><small>機器人選項</small></button>
+        <button class="nav-item" data-page="permissions"><span>權限</span><small>群組與限制</small></button>
+        <button class="nav-item" data-page="logs"><span>日誌</span><small>執行紀錄</small></button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="local-chip"><span class="status-dot"></span> Local only</div>
+        <p>只接受這台電腦的連線</p>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="page-eyebrow">NOW PLAYING</p>
+          <h1 id="page-title">今晚播什麼？</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="server-select">
+            <span>Discord 伺服器</span>
+            <select id="guild-select" aria-label="Discord 伺服器"></select>
+          </label>
+          <div class="connection-pill" id="connection-pill">
+            <span class="status-dot"></span>
+            <span id="connection-text">正在連線</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="page is-active" data-page-panel="dashboard">
+        <div class="dashboard-grid">
+          <section class="now-playing" aria-labelledby="now-playing-heading">
+            <div class="art-stage" id="art-stage">
+              <div class="audio-halo" aria-hidden="true"></div>
+              <div class="album-art" id="album-art">
+                <img id="album-image" alt="" hidden>
+                <div class="album-fallback" id="album-fallback"><span>NO</span><span>ARTWORK</span></div>
+              </div>
+              <div class="wave-strip" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+            </div>
+
+            <div class="track-copy">
+              <p class="section-kicker" id="now-playing-heading">正在播放</p>
+              <h2 id="track-title">尚未播放歌曲</h2>
+              <p id="track-meta">加入一首歌，讓今晚有點聲音。</p>
+            </div>
+
+            <div class="progress-block">
+              <input id="progress-range" type="range" min="0" max="100" step="0.1" value="0" disabled aria-label="播放進度">
+              <div class="time-row"><span id="time-current">0:00</span><span id="time-total">0:00</span></div>
+            </div>
+
+            <div class="transport" aria-label="播放控制">
+              <button class="button ghost" data-action="shuffle">隨機</button>
+              <button class="button ghost" id="repeat-song" data-action="repeat_song" aria-pressed="false" aria-label="關閉循環，點擊切換循環模式">關閉循環</button>
+              <button class="button ghost" data-action="skip">跳過</button>
+              <button class="button primary transport-main" id="play-toggle" data-action="pause">暫停</button>
+              <button class="button ghost" data-action="stop">停止</button>
+              <button class="button ghost" data-action="clear">清空</button>
+            </div>
+
+            <div class="volume-row">
+              <label for="volume-range">音量 <output id="volume-output">25%</output></label>
+              <input id="volume-range" type="range" min="1" max="100" value="25">
+            </div>
+          </section>
+
+          <aside class="queue-panel" aria-labelledby="queue-heading">
+            <div class="panel-heading">
+              <div><p class="section-kicker">UP NEXT</p><h2 id="queue-heading">播放佇列</h2></div>
+              <span class="queue-count" id="queue-count">0 首</span>
+            </div>
+
+            <form class="add-track" id="add-track-form">
+              <input id="track-query" type="text" autocomplete="off" placeholder="貼上連結或輸入歌曲名稱" aria-label="加入歌曲">
+              <button class="button primary" type="submit">加入</button>
+            </form>
+
+            <div class="queue-list" id="queue-list" aria-live="polite"></div>
+            <div class="empty-state" id="queue-empty">
+              <strong>佇列還是空的</strong>
+              <p>貼上 YouTube、Spotify 連結，或直接搜尋歌曲。</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" data-page-panel="playlists">
+        <div class="content-header">
+          <div><p class="section-kicker">AUTOPLAY</p><h2>播放清單</h2></div>
+          <button class="button primary" id="new-playlist">新增清單</button>
+        </div>
+        <div class="playlist-workbench">
+          <aside class="playlist-tabs" id="playlist-tabs" aria-label="播放清單"></aside>
+          <section class="playlist-editor">
+            <div class="panel-heading">
+              <div><p class="section-kicker">TRACKS</p><h3 id="playlist-title">選擇播放清單</h3></div>
+              <span class="queue-count" id="playlist-count">0 首</span>
+            </div>
+            <form class="add-track" id="playlist-add-form">
+              <input id="playlist-track" type="text" autocomplete="off" placeholder="貼上連結或輸入搜尋詞" aria-label="新增播放清單歌曲">
+              <button class="button primary" type="submit">加入</button>
+            </form>
+            <div class="playlist-tracks" id="playlist-tracks"></div>
+            <div class="empty-state" id="playlist-empty"><strong>這張清單還沒有歌</strong><p>加入連結或搜尋詞，MusicBot 會依序播放。</p></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" data-page-panel="settings">
+        <div class="content-header">
+          <div><p class="section-kicker">CONFIGURATION</p><h2>機器人設定</h2></div>
+          <div class="header-actions">
+            <button class="button ghost" id="reload-config">重新載入</button>
+            <button class="button ghost" id="restart-soft">軟重啟</button>
+            <button class="button danger" id="restart-full">完整重啟</button>
+          </div>
+        </div>
+        <div class="settings-toolbar">
+          <input id="settings-search" type="search" placeholder="搜尋設定名稱或說明">
+          <span id="settings-count">載入中</span>
+        </div>
+        <div class="settings-sections" id="settings-sections"></div>
+      </section>
+
+      <section class="page" data-page-panel="permissions">
+        <div class="content-header">
+          <div><p class="section-kicker">ACCESS CONTROL</p><h2>權限群組</h2></div>
+          <button class="button primary" id="permission-add-group">新增群組</button>
+        </div>
+        <div id="permissions-root" class="feature-placeholder">
+          <strong>正在讀取權限群組</strong>
+          <p>載入完成後可修改歌曲數量、播放清單、跳過與命令限制。</p>
+        </div>
+      </section>
+
+      <section class="page" data-page-panel="logs">
+        <div class="content-header">
+          <div><p class="section-kicker">RUNTIME</p><h2>執行日誌</h2></div>
+          <button class="button ghost" id="refresh-logs">重新整理</button>
+        </div>
+        <div class="log-toolbar">
+          <select id="log-level"><option value="">全部等級</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>DEBUG</option></select>
+          <input id="log-search" type="search" placeholder="搜尋日誌">
+          <label class="toggle-row"><input id="log-auto-scroll" type="checkbox" checked><span>自動捲動</span></label>
+        </div>
+        <pre class="log-view" id="log-view" tabindex="0" aria-label="MusicBot 日誌"></pre>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  <div class="reconnect-layer" id="reconnect-layer" hidden>
+    <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 MusicBot 回應。</p></div>
+  </div>
+
+  <script src="/assets/app.js?v=5" defer></script>
+</body>
+</html>
