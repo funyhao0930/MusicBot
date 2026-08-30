@@ -22,6 +22,8 @@ config/blocklist_users.txt
 config/blocklist_songs.txt
 config/playlists/
 media/
+artifacts/
+/tmp*.tmp*
 
 docker-compose.yml
 config/autoplaylist.cachemap.json

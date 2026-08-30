@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>MusicBot 控制中心</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=2">
+  <link rel="stylesheet" href="/assets/styles.css?v=3">
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -69,7 +69,9 @@
 
             <div class="track-copy">
               <p class="section-kicker" id="now-playing-heading">正在播放</p>
-              <h2 id="track-title">尚未播放歌曲</h2>
+              <div class="track-title-viewport" id="track-title-viewport">
+                <h2 id="track-title">尚未播放歌曲</h2>
+              </div>
               <p id="track-meta">加入一首歌，讓今晚有點聲音。</p>
             </div>
 
@@ -137,7 +139,7 @@
 
       <section class="page" data-page-panel="settings">
         <div class="content-header">
-          <div><p class="section-kicker">CONFIGURATION</p><h2>機器人設定</h2></div>
+          <div><p class="section-kicker">設定管理</p><h2>機器人設定</h2></div>
           <div class="header-actions">
             <button class="button ghost" id="reload-config">重新載入</button>
             <button class="button ghost" id="restart-soft">軟重啟</button>
@@ -153,7 +155,7 @@
 
       <section class="page" data-page-panel="permissions">
         <div class="content-header">
-          <div><p class="section-kicker">ACCESS CONTROL</p><h2>權限群組</h2></div>
+          <div><p class="section-kicker">存取控制</p><h2>權限群組</h2></div>
           <button class="button primary" id="permission-add-group">新增群組</button>
         </div>
         <div id="permissions-root" class="feature-placeholder">
@@ -182,6 +184,6 @@
     <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 MusicBot 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=5" defer></script>
+  <script src="/assets/app.js?v=7" defer></script>
 </body>
 </html>

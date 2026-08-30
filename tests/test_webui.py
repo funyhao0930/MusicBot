@@ -1,3 +1,5 @@
+import ast
+import pathlib
 import unittest
 from collections import deque
 from types import SimpleNamespace
@@ -43,6 +45,67 @@ class WebUISecurityTests(unittest.TestCase):
 
 
 class WebUIDataTests(unittest.TestCase):
+    @staticmethod
+    def _registered_option_names(path: pathlib.Path) -> list[tuple[str, str]]:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        options = []
+        for node in ast.walk(tree):
+            if (
+                not isinstance(node, ast.Call)
+                or not isinstance(node.func, ast.Attribute)
+                or node.func.attr != "init_option"
+            ):
+                continue
+            keywords = {keyword.arg: keyword.value for keyword in node.keywords}
+            option = keywords.get("option")
+            section = keywords.get("section")
+            if not isinstance(option, ast.Constant) or not isinstance(option.value, str):
+                continue
+            section_name = (
+                section.value
+                if isinstance(section, ast.Constant) and isinstance(section.value, str)
+                else "Default"
+            )
+            options.append((section_name, option.value))
+        return options
+
+    def test_all_settings_and_permissions_have_traditional_chinese_labels(self) -> None:
+        from musicbot.webui import config_option_to_payload
+
+        root = pathlib.Path(__file__).parents[1]
+        option_sources = (
+            root / "musicbot" / "config.py",
+            root / "musicbot" / "permissions.py",
+        )
+
+        for source in option_sources:
+            for section, option_name in self._registered_option_names(source):
+                option = SimpleNamespace(
+                    section=section,
+                    option=option_name,
+                    dest="value",
+                    getter="get",
+                    default="",
+                    comment="Original English comment",
+                    editable=True,
+                )
+                payload = config_option_to_payload(SimpleNamespace(value=""), option)
+
+                self.assertRegex(payload.get("display_option", ""), r"[\u4e00-\u9fff]")
+                self.assertRegex(payload.get("display_comment", ""), r"[\u4e00-\u9fff]")
+
+        permission_group = SimpleNamespace(
+            section="Default",
+            option="MaxSongs",
+            dest="value",
+            getter="getint",
+            default=0,
+            comment="Original English comment",
+            editable=True,
+        )
+        payload = config_option_to_payload(SimpleNamespace(value=8), permission_group)
+        self.assertEqual(payload.get("display_section"), "預設")
+
     def test_sensitive_config_options_never_return_values(self) -> None:
         from musicbot.webui import config_option_to_payload
 

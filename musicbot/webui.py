@@ -15,6 +15,8 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 
+from .webui_i18n import localize_option, localize_permission_group
+
 
 _SENSITIVE_PARTS = ("token", "secret", "password", "cookie", "oauth")
 _LOG_SECRET_RE = re.compile(
@@ -81,6 +83,9 @@ def config_option_to_payload(config: Any, option: Any) -> Dict[str, Any]:
     sensitive = _is_sensitive_option(option.section, option.option)
     editable = bool(option.editable) and not sensitive
     value = None if sensitive else _json_safe(getattr(config, option.dest, None))
+    display_section, display_option, display_comment = localize_option(
+        option.section, option.option, option.comment
+    )
 
     value_type = type(option.default).__name__
     if option.getter == "getboolean":
@@ -97,6 +102,9 @@ def config_option_to_payload(config: Any, option: Any) -> Dict[str, Any]:
     return {
         "section": option.section,
         "option": option.option,
+        "display_section": display_section,
+        "display_option": display_option,
+        "display_comment": display_comment,
         "value": value,
         "type": value_type,
         "comment": option.comment,
@@ -743,7 +751,13 @@ class MusicBotWebUI:
                 if option.section != name:
                     continue
                 options.append(config_option_to_payload(group, option))
-            groups.append({"name": name, "options": options})
+            groups.append(
+                {
+                    "name": name,
+                    "display_name": localize_permission_group(name),
+                    "options": options,
+                }
+            )
         return web.json_response({"ok": True, "groups": groups})
 
     async def _handle_permissions_patch(self, request: web.Request) -> web.Response:

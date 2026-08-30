@@ -315,8 +315,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('data-action="repeat_song"', html)
         self.assertIn("關閉循環", html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=2', html)
-        self.assertIn('/assets/app.js?v=5', html)
+        self.assertIn('/assets/styles.css?v=3', html)
+        self.assertIn('/assets/app.js?v=7', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -344,6 +344,192 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(r'"all": "\u5168\u90e8\u5faa\u74b0"', javascript)
         self.assertIn(r'"off": "\u95dc\u9589\u5faa\u74b0"', javascript)
         self.assertIn('repeat.dataset.action = nextAction', javascript)
+
+    async def test_long_track_titles_scroll_only_when_they_overflow(self):
+        response = await self.client.get("/")
+        self.assertEqual(response.status, 200)
+        html = await response.text()
+        self.assertIn('id="track-title-viewport"', html)
+
+        response = await self.client.get("/assets/styles.css")
+        self.assertEqual(response.status, 200)
+        css = await response.text()
+        self.assertIn("@keyframes title-marquee", css)
+        self.assertIn("mask-image", css)
+        self.assertIn("-webkit-mask-image", css)
+
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+
+function createClassList() {
+  const values = new Set();
+  return {
+    add(name) { values.add(name); },
+    remove(name) { values.delete(name); },
+    toggle(name, force) {
+      if (force === undefined) {
+        if (values.has(name)) values.delete(name);
+        else values.add(name);
+      } else if (force) values.add(name);
+      else values.delete(name);
+    },
+    contains(name) { return values.has(name); },
+  };
+}
+
+const properties = new Map();
+const viewport = {
+  clientWidth: 420,
+  classList: createClassList(),
+  style: {
+    setProperty(name, value) { properties.set(name, value); },
+    removeProperty(name) { properties.delete(name); },
+  },
+};
+const title = { scrollWidth: 680, textContent: "A very long track title" };
+const document = {
+  addEventListener() {},
+  querySelector(selector) {
+    if (selector === "#track-title-viewport") return viewport;
+    if (selector === "#track-title") return title;
+    return null;
+  },
+  querySelectorAll() { return []; },
+};
+const context = {
+  document,
+  window: { addEventListener() {}, confirm() { return false; }, prompt() { return null; } },
+  console,
+  fetch: async () => { throw new Error("unexpected fetch"); },
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout() {},
+  URLSearchParams,
+  encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+
+vm.runInContext("updateTrackTitleOverflow()", context);
+if (!viewport.classList.contains("is-overflowing")) {
+  throw new Error("overflowing title did not enable marquee mode");
+}
+if (properties.get("--title-overflow") !== "260px") {
+  throw new Error(`wrong marquee distance: ${properties.get("--title-overflow")}`);
+}
+
+title.scrollWidth = 300;
+vm.runInContext("updateTrackTitleOverflow()", context);
+if (viewport.classList.contains("is-overflowing")) {
+  throw new Error("short title incorrectly kept marquee mode enabled");
+}
+if (properties.has("--title-overflow")) {
+  throw new Error("short title kept the previous marquee distance");
+}
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_queue_does_not_rebuild_when_snapshot_is_unchanged(self):
+        response = await self.client.get("/assets/styles.css")
+        self.assertEqual(response.status, 200)
+        css = await response.text()
+        self.assertIn("overflow-x: hidden", css)
+        self.assertIn("overflow-y: auto", css)
+
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+
+function createElement() {
+  const parts = {};
+  return {
+    children: [],
+    hidden: false,
+    textContent: "",
+    className: "",
+    draggable: false,
+    dataset: {},
+    listeners: {},
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+    replaceChildren(...nodes) {
+      this.replaceCount = (this.replaceCount || 0) + 1;
+      this.children = nodes;
+    },
+    querySelector(selector) {
+      if (!parts[selector]) parts[selector] = createElement();
+      return parts[selector];
+    },
+    set innerHTML(value) {},
+  };
+}
+
+const list = createElement();
+const count = createElement();
+const empty = createElement();
+const document = {
+  addEventListener() {},
+  createElement,
+  querySelector(selector) {
+    if (selector === "#queue-list") return list;
+    if (selector === "#queue-count") return count;
+    if (selector === "#queue-empty") return empty;
+    return createElement();
+  },
+  querySelectorAll() { return []; },
+};
+const context = {
+  document,
+  window: { addEventListener() {}, confirm() { return false; }, prompt() { return null; } },
+  console,
+  fetch: async () => { throw new Error("unexpected fetch"); },
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout() {},
+  URLSearchParams,
+  encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+
+const firstSnapshot = [{
+  title: "Night Drive",
+  url: "https://example.test/night-drive",
+  duration: 180,
+  requested_by: "tester",
+}];
+vm.runInContext(`renderQueue(${JSON.stringify(firstSnapshot)})`, context);
+vm.runInContext(`renderQueue(${JSON.stringify(firstSnapshot)})`, context);
+if (list.replaceCount !== 1) {
+  throw new Error(`unchanged queue rebuilt ${list.replaceCount} times`);
+}
+
+const changedSnapshot = [{ ...firstSnapshot[0], duration: 181 }];
+vm.runInContext(`renderQueue(${JSON.stringify(changedSnapshot)})`, context);
+if (list.replaceCount !== 2) {
+  throw new Error("changed queue did not rebuild");
+}
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     async def test_frontend_preserves_large_discord_guild_ids(self):
         app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"

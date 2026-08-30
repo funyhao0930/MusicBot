@@ -9,6 +9,7 @@ const state = {
   connected: false,
   scrubbing: false,
   draggingIndex: null,
+  queueRenderKey: null,
   settings: [],
   playlists: [],
   playlistsLoaded: false,
@@ -36,8 +37,8 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const pageMeta = {
   dashboard: ["NOW PLAYING", "今晚播什麼？"],
   playlists: ["AUTOPLAY", "播放清單"],
-  settings: ["CONFIGURATION", "機器人設定"],
-  permissions: ["ACCESS CONTROL", "權限群組"],
+  settings: ["設定管理", "機器人設定"],
+  permissions: ["存取控制", "權限群組"],
   logs: ["RUNTIME", "執行日誌"],
 };
 
@@ -163,6 +164,39 @@ function setArtwork(entry, changed) {
   }, changed ? 160 : 0);
 }
 
+function updateTrackTitleOverflow() {
+  const viewport = $("#track-title-viewport");
+  const title = $("#track-title");
+  if (!viewport || !title) return;
+
+  const overflow = Math.max(0, Math.ceil(title.scrollWidth - viewport.clientWidth));
+  const isOverflowing = overflow > 2;
+  viewport.classList.toggle("is-overflowing", isOverflowing);
+
+  if (!isOverflowing) {
+    viewport.style.removeProperty("--title-overflow");
+    viewport.style.removeProperty("--title-marquee-duration");
+    return;
+  }
+
+  const duration = Math.min(18, Math.max(8, 6 + overflow / 45));
+  viewport.style.setProperty("--title-overflow", `${overflow}px`);
+  viewport.style.setProperty("--title-marquee-duration", `${duration.toFixed(2)}s`);
+}
+
+function setTrackTitle(value) {
+  const title = $("#track-title");
+  const viewport = $("#track-title-viewport");
+  if (!title || !viewport) return;
+
+  const nextTitle = value || "尚未播放歌曲";
+  if (title.textContent === nextTitle) return;
+
+  title.textContent = nextTitle;
+  viewport.classList.remove("is-overflowing");
+  requestAnimationFrame(updateTrackTitleOverflow);
+}
+
 function renderPlayer(player) {
   const previousUrl = state.currentUrl;
   const currentUrl = player?.current?.url || "";
@@ -173,7 +207,7 @@ function renderPlayer(player) {
 
   const playing = player?.state === "playing";
   $("#art-stage").classList.toggle("is-playing", playing);
-  $("#track-title").textContent = player?.current?.title || "尚未播放歌曲";
+  setTrackTitle(player?.current?.title);
   $("#track-meta").textContent = player?.current ? `由 ${player.current.requested_by} 加入 · ${player.voice_channel?.name || "未連接語音頻道"}` : "加入一首歌，讓今晚有點聲音。";
   setArtwork(player?.current, changed);
 
@@ -222,6 +256,16 @@ function renderQueue(queue) {
   $("#queue-count").textContent = `${queue.length} 首`;
   $("#queue-empty").hidden = queue.length > 0;
   list.hidden = queue.length === 0;
+
+  const renderKey = JSON.stringify(queue.map(entry => [
+    entry.url || "",
+    entry.title || "",
+    Number(entry.duration) || 0,
+    entry.requested_by || "",
+  ]));
+  if (renderKey === state.queueRenderKey) return;
+  state.queueRenderKey = renderKey;
+
   list.replaceChildren(...queue.map((entry, index) => {
     const row = document.createElement("div");
     row.className = "queue-item";
@@ -333,15 +377,15 @@ function settingInput(option) {
 function renderSettings(options) {
   state.settings = options;
   const query = $("#settings-search").value.trim().toLowerCase();
-  const filtered = options.filter(item => !query || `${item.section} ${item.option} ${item.comment}`.toLowerCase().includes(query));
+  const filtered = options.filter(item => !query || `${item.section} ${item.option} ${item.comment} ${item.display_section} ${item.display_option} ${item.display_comment}`.toLowerCase().includes(query));
   const groups = Map.groupBy ? Map.groupBy(filtered, item => item.section) : filtered.reduce((map, item) => (map.set(item.section, [...(map.get(item.section) || []), item]), map), new Map());
   const root = $("#settings-sections");
   root.replaceChildren(...[...groups.entries()].map(([section, items]) => {
-    const group = document.createElement("section"); group.className = "settings-group"; group.innerHTML = `<h3></h3>`; $("h3", group).textContent = section;
+    const group = document.createElement("section"); group.className = "settings-group"; group.innerHTML = `<h3></h3>`; $("h3", group).textContent = items[0]?.display_section || section;
     items.forEach(option => {
       const row = document.createElement("div"); row.className = "setting-row";
       row.innerHTML = `<div class="setting-copy"><strong></strong><p></p></div><div class="setting-control"></div>`;
-      $("strong", row).textContent = option.option; $("p", row).textContent = option.comment || "沒有額外說明";
+      $("strong", row).textContent = option.display_option || option.option; $("p", row).textContent = option.display_comment || option.comment || "沒有額外說明";
       const control = $(".setting-control", row); const input = settingInput(option); control.append(input);
       if (option.editable && !option.sensitive) {
         const save = document.createElement("button"); save.className = "button ghost"; save.type = "button"; save.textContent = "儲存";
@@ -502,12 +546,12 @@ function permissionControl(group, option, row) {
   control.append(save);
 }
 
-async function permissionGroupAction(action, source = "") {
+async function permissionGroupAction(action, source = "", sourceLabel = source) {
   let name = "";
   if (action === "delete") {
-    if (!window.confirm(`確定刪除權限群組「${source}」？`)) return;
+    if (!window.confirm(`確定刪除權限群組「${sourceLabel}」？`)) return;
   } else {
-    const label = action === "create" ? "新群組名稱" : action === "clone" ? `複製「${source}」為` : `將「${source}」重新命名為`;
+    const label = action === "create" ? "新群組名稱" : action === "clone" ? `複製「${sourceLabel}」為` : `將「${sourceLabel}」重新命名為`;
     name = window.prompt(label) || "";
     if (!name) return;
   }
@@ -531,20 +575,20 @@ async function loadPermissions() {
       const heading = document.createElement("div");
       heading.className = "panel-heading";
       heading.innerHTML = `<h3></h3><div class="group-actions"></div>`;
-      $("h3", heading).textContent = group.name;
+      $("h3", heading).textContent = group.display_name || group.name;
       const actions = $(".group-actions", heading);
-      const clone = document.createElement("button"); clone.className = "button ghost"; clone.textContent = "複製"; clone.addEventListener("click", () => permissionGroupAction("clone", group.name)); actions.append(clone);
+      const clone = document.createElement("button"); clone.className = "button ghost"; clone.textContent = "複製"; clone.addEventListener("click", () => permissionGroupAction("clone", group.name, group.display_name)); actions.append(clone);
       if (!["owner", "default"].includes(group.name.toLowerCase())) {
-        const rename = document.createElement("button"); rename.className = "button ghost"; rename.textContent = "重新命名"; rename.addEventListener("click", () => permissionGroupAction("rename", group.name)); actions.append(rename);
-        const remove = document.createElement("button"); remove.className = "button danger"; remove.textContent = "刪除"; remove.addEventListener("click", () => permissionGroupAction("delete", group.name)); actions.append(remove);
+        const rename = document.createElement("button"); rename.className = "button ghost"; rename.textContent = "重新命名"; rename.addEventListener("click", () => permissionGroupAction("rename", group.name, group.display_name)); actions.append(rename);
+        const remove = document.createElement("button"); remove.className = "button danger"; remove.textContent = "刪除"; remove.addEventListener("click", () => permissionGroupAction("delete", group.name, group.display_name)); actions.append(remove);
       }
       card.append(heading);
       group.options.forEach(option => {
         const row = document.createElement("div");
         row.className = "setting-row";
         row.innerHTML = `<div class="setting-copy"><strong></strong><p></p></div><div class="setting-control"></div>`;
-        $("strong", row).textContent = option.option;
-        $("p", row).textContent = option.comment || "沒有額外說明";
+        $("strong", row).textContent = option.display_option || option.option;
+        $("p", row).textContent = option.display_comment || option.comment || "沒有額外說明";
         permissionControl(group, option, row);
         card.append(row);
       });
@@ -626,5 +670,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#restart-full").addEventListener("click", () => requestRestart("full"));
   $("#permission-add-group").addEventListener("click", () => permissionGroupAction("create"));
   $("#refresh-logs").addEventListener("click", loadLogs); $("#log-level").addEventListener("change", renderLogs); $("#log-search").addEventListener("input", renderLogs);
+  window.addEventListener?.("resize", () => requestAnimationFrame(updateTrackTitleOverflow));
+  requestAnimationFrame(updateTrackTitleOverflow);
   refreshSnapshot(); setInterval(refreshSnapshot, 2000); requestAnimationFrame(animateProgress);
 });
