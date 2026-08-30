@@ -433,6 +433,7 @@ function renderPlaylistEditor() {
   $("#playlist-count").textContent = `${tracks.length} 首`;
   $("#playlist-empty").hidden = tracks.length > 0;
   $("#playlist-add-form").querySelectorAll("input, button").forEach(control => { control.disabled = !playlist; });
+  $("#playlist-queue-all").disabled = !playlist || tracks.length === 0;
 
   const root = $("#playlist-tracks");
   const visibleCount = playlist
@@ -691,6 +692,31 @@ document.addEventListener("DOMContentLoaded", () => {
     finally { button.disabled = false; button.textContent = "加入"; }
   });
   $("#new-playlist").addEventListener("click", createPlaylist);
+  $("#playlist-queue-all").addEventListener("click", async event => {
+    const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
+    if (!state.guildId) {
+      toast("請先選擇 Discord 伺服器", "error");
+      return;
+    }
+    if (!playlist || playlist.tracks.length === 0) return;
+
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = `加入 ${playlist.tracks.length} 首中`;
+    try {
+      const result = await api(`/api/playlists/${encodeURIComponent(playlist.name)}/queue`, {
+        method: "POST",
+        body: { guild_id: state.guildId },
+      });
+      renderQueue(result.queue);
+      toast(`已加入 ${result.added_count} 首歌曲`);
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = "全部加入隊列";
+    }
+  });
   $("#playlist-add-form").addEventListener("submit", async event => {
     event.preventDefault();
     const input = $("#playlist-track");

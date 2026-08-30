@@ -170,6 +170,8 @@ input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92
 .playlist-tab.is-active { color: var(--text); background: linear-gradient(90deg, rgba(139,92,246,.2), rgba(139,92,246,.05)); }
 .playlist-editor { min-width: 0; padding: 26px; display: flex; flex-direction: column; }
 .playlist-editor h3 { margin: 0; font-size: 22px; letter-spacing: -.03em; }
+.playlist-heading-actions { display: flex; align-items: center; gap: 10px; }
+.playlist-heading-actions .button { padding: 7px 10px; font-size: 11px; }
 .playlist-tracks { display: grid; align-content: start; overflow: auto; min-height: 0; }
 .playlist-track { display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 13px 6px; border-bottom: 1px solid var(--line); animation: queue-in var(--motion-page) var(--ease-out) both; transition: opacity var(--motion-ui), transform var(--motion-ui), max-height var(--motion-ui), padding var(--motion-ui); }
 .playlist-load-more { width: min(360px, 100%); margin: 18px auto 4px; }

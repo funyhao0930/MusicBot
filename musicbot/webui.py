@@ -230,6 +230,10 @@ class MusicBotWebUI:
                 web.post("/api/config/reload", self._handle_config_reload),
                 web.get("/api/logs", self._handle_logs),
                 web.get("/api/playlists", self._handle_playlists),
+                web.post(
+                    "/api/playlists/{name}/queue",
+                    self._handle_playlist_queue_add,
+                ),
                 web.get(
                     "/api/playlists/{name}/titles",
                     self._handle_playlist_titles,
@@ -736,6 +740,61 @@ class MusicBotWebUI:
         for name in sorted(manager.playlist_names, key=str.casefold):
             playlists.append(await self._playlist_payload(name))
         return web.json_response({"ok": True, "playlists": playlists})
+
+    async def _handle_playlist_queue_add(
+        self, request: web.Request
+    ) -> web.Response:
+        try:
+            body = await self._json_body(request)
+            guild_id = self._guild_id_from(body.get("guild_id"))
+            player = self._player_for(guild_id)
+            name = self._playlist_name(request.match_info["name"])
+            playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
+            await playlist.load()
+            sources = list(playlist)
+            if not sources:
+                raise ValueError("The playlist does not contain any tracks")
+
+            infos = []
+            for source in sources:
+                info = await self.bot.downloader.extract_info(
+                    source, download=False, process=True
+                )
+                if not info:
+                    raise ValueError("No playable result was found")
+                infos.append(info)
+
+            entries = []
+            for info in infos:
+                if bool(getattr(info, "has_entries", False)):
+                    imported, _position = await player.playlist.import_from_info(
+                        info, channel=None, author=None, head=False
+                    )
+                    entries.extend(imported)
+                else:
+                    entry, _position = await player.playlist.add_entry_from_info(
+                        info, channel=None, author=None, head=False
+                    )
+                    entries.append(entry)
+            if not entries:
+                raise ValueError("The playlist did not contain playable tracks")
+
+            if bool(getattr(player, "is_stopped", False)):
+                player.play()
+        except (OSError, TypeError, ValueError) as exc:
+            return self._error(str(exc))
+        except LookupError as exc:
+            return self._error(str(exc), status=404)
+        except Exception as exc:
+            return self._error(f"Unable to add this playlist: {exc}", status=502)
+
+        return web.json_response(
+            {
+                "ok": True,
+                "added_count": len(entries),
+                "queue": [entry_to_payload(e) for e in player.playlist.entries],
+            }
+        )
 
     async def _handle_playlist_titles(self, request: web.Request) -> web.Response:
         try:

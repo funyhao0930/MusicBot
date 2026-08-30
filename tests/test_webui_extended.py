@@ -322,8 +322,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('data-action="repeat_song"', html)
         self.assertIn("關閉循環", html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=4', html)
-        self.assertIn('/assets/app.js?v=9', html)
+        self.assertIn('/assets/styles.css?v=5', html)
+        self.assertIn('/assets/app.js?v=10', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -991,6 +991,94 @@ Object.defineProperty(context, "calls", { get() { return calls; } });
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    async def test_playlist_all_queue_button_imports_selected_playlist(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+
+function createElement(tag = "div") {
+  const children = [];
+  const element = {
+    tagName: tag.toUpperCase(), children, hidden: false, disabled: false,
+    dataset: {}, style: {}, textContent: "", className: "", listeners: {},
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+    append(...nodes) { children.push(...nodes); },
+    replaceChildren(...nodes) { children.splice(0, children.length, ...nodes); },
+    querySelectorAll() { return []; },
+    querySelector(selector) {
+      if (!this._parts) this._parts = {};
+      if (!this._parts[selector]) this._parts[selector] = createElement();
+      return this._parts[selector];
+    },
+  };
+  Object.defineProperty(element, "innerHTML", { set() {}, get() { return ""; } });
+  return element;
+}
+
+const elements = new Map();
+for (const id of [
+  "#playlist-title", "#playlist-count", "#playlist-empty", "#playlist-add-form",
+  "#playlist-tracks", "#playlist-tabs", "#playlist-queue-all", "#queue-list",
+  "#queue-count", "#queue-empty", "#toast-region",
+]) elements.set(id, createElement());
+elements.get("#playlist-add-form").querySelectorAll = () => [];
+const domListeners = {};
+const document = {
+  addEventListener(name, callback) { domListeners[name] = callback; },
+  createElement,
+  querySelector(selector) { return elements.get(selector) || createElement(); },
+  querySelectorAll() { return []; },
+};
+const calls = [];
+const context = {
+  document,
+  window: { confirm() { return false; }, prompt() { return null; } },
+  console, fetch: async () => { throw new Error("unexpected fetch"); },
+  performance: { now: () => 0 }, requestAnimationFrame() {}, setInterval() {},
+  setTimeout(callback) { callback(); }, URLSearchParams, encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+vm.runInContext(`
+  refreshSnapshot = () => {};
+  state.guildId = "1363416878059487264";
+  state.currentPlaylist = "晚安歌單";
+  state.playlists = [{ name: "晚安歌單", tracks: [
+    { title: "Night Drive", source: "https://example.test/night-drive" },
+    { title: "Moonlight", source: "https://example.test/moonlight" },
+  ] }];
+  api = async (path, options) => {
+    calls.push({ path, body: options.body });
+    return { added_count: 2, queue: [] };
+  };
+`, context);
+Object.defineProperty(context, "calls", { get() { return calls; } });
+domListeners.DOMContentLoaded();
+
+(async () => {
+  const button = elements.get("#playlist-queue-all");
+  if (!button.listeners.click) throw new Error("all queue button has no click handler");
+  await button.listeners.click({ currentTarget: button });
+  if (calls.length !== 1) throw new Error(`expected one API call, got ${calls.length}`);
+  if (calls[0].path !== "/api/playlists/%E6%99%9A%E5%AE%89%E6%AD%8C%E5%96%AE/queue") {
+    throw new Error("all queue button used the wrong endpoint");
+  }
+  if (calls[0].body.guild_id !== "1363416878059487264") {
+    throw new Error("all queue request used the wrong guild");
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     async def test_progress_slider_previews_then_seeks_once(self):
         app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
         harness = r"""
@@ -1166,6 +1254,39 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
         )
         self.assertEqual(response.status, 200)
         self.assertEqual(len(self.player.playlist.entries), 1)
+
+    async def test_playlist_queue_add_imports_every_track_in_playlist_order(self):
+        self.bot.playlist_mgr.playlists["default"].data = [
+            "first track",
+            "second track",
+        ]
+
+        response = await self.client.post(
+            "/api/playlists/default/queue",
+            json={"guild_id": 1},
+            headers=self._headers(),
+        )
+
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["added_count"], 2)
+        self.assertEqual(self.bot.downloader.calls, ["first track", "second track"])
+        self.assertEqual(
+            [entry["title"] for entry in payload["queue"][-2:]],
+            ["Result for first track", "Result for second track"],
+        )
+
+    async def test_playlist_queue_add_rejects_empty_playlist(self):
+        self.bot.playlist_mgr.playlists["default"].data = []
+
+        response = await self.client.post(
+            "/api/playlists/default/queue",
+            json={"guild_id": 1},
+            headers=self._headers(),
+        )
+
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.bot.downloader.calls, [])
 
     async def test_permission_option_can_be_read_and_saved(self):
         response = await self.client.get("/api/permissions")
