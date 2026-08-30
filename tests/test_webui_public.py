@@ -31,9 +31,11 @@ class PublicRouteDefinitionTests(unittest.TestCase):
             "http://127.0.0.1:8080/private",
             "http://192.168.1.2/admin",
             "http://169.254.169.254/latest/meta-data",
+            "//127.0.0.1/private",
             "file:///C:/Windows/win.ini",
             "https://example.com/audio.mp3",
             "https://youtube.com/redirect?q=http://127.0.0.1",
+            "https://youtu.be/redirect?target=http://127.0.0.1",
         ):
             with self.subTest(unsafe=unsafe):
                 with self.assertRaises(ValueError):

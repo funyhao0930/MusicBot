@@ -31,6 +31,7 @@ _SAFE_CLIENT_ERRORS = {
 }
 _WRITE_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 _URL_SCHEME = re.compile(r"^([a-z][a-z0-9+.-]*):(.*)$", re.IGNORECASE)
+_YOUTUBE_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _YOUTUBE_HOSTS = {
     "youtube.com",
     "www.youtube.com",
@@ -44,6 +45,8 @@ def validate_public_media_input(raw_value: Any) -> str:
     value = str(raw_value or "").strip()
     if not value:
         raise ValueError("A search phrase or YouTube URL is required")
+    if value.startswith(("//", "\\\\")):
+        raise ValueError("Scheme-relative URLs are not allowed")
 
     scheme_match = _URL_SCHEME.match(value)
     if scheme_match and scheme_match.group(2).startswith((" ", "\t")):
@@ -79,8 +82,8 @@ def validate_public_media_input(raw_value: Any) -> str:
         raise ValueError("Public URL credentials and custom ports are not allowed")
 
     if host == "youtu.be":
-        if not parsed.path.strip("/"):
-            raise ValueError("YouTube URL is missing a video ID")
+        if not _YOUTUBE_VIDEO_ID.fullmatch(parsed.path.strip("/")):
+            raise ValueError("YouTube short URL has an invalid video ID")
         return value
 
     if host not in _YOUTUBE_HOSTS:
