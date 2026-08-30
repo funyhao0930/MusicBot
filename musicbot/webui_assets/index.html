@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>MusicBot 控制中心</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=5">
+  <link rel="stylesheet" href="/assets/styles.css?v=6">
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -81,17 +81,18 @@
             </div>
 
             <div class="transport" aria-label="播放控制">
-              <button class="button ghost" data-action="shuffle">隨機</button>
-              <button class="button ghost" id="repeat-song" data-action="repeat_song" aria-pressed="false" aria-label="關閉循環，點擊切換循環模式">關閉循環</button>
-              <button class="button ghost" data-action="skip">跳過</button>
-              <button class="button primary transport-main" id="play-toggle" data-action="pause">暫停</button>
-              <button class="button ghost" data-action="stop">停止</button>
-              <button class="button ghost" data-action="clear">清空</button>
-            </div>
-
-            <div class="volume-row">
-              <label for="volume-range">音量 <output id="volume-output">25%</output></label>
-              <input id="volume-range" type="range" min="1" max="100" value="25">
+              <div class="transport-actions">
+                <button class="button ghost" data-action="shuffle">隨機</button>
+                <button class="button ghost" id="repeat-song" data-action="repeat_song" aria-pressed="false" aria-label="關閉循環，點擊切換循環模式">關閉循環</button>
+                <button class="button ghost" data-action="skip">跳過</button>
+                <button class="button primary transport-main" id="play-toggle" data-action="pause">暫停</button>
+                <button class="button ghost" data-action="stop">停止</button>
+                <button class="button ghost" data-action="clear">清空</button>
+              </div>
+              <div class="volume-row">
+                <label for="volume-range">音量 <output id="volume-output">25%</output></label>
+                <input id="volume-range" type="range" min="1" max="100" value="25">
+              </div>
             </div>
           </section>
 

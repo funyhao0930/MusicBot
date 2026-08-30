@@ -2,6 +2,7 @@ import tempfile
 import subprocess
 import unittest
 from collections import deque
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -322,7 +323,7 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('data-action="repeat_song"', html)
         self.assertIn("關閉循環", html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=5', html)
+        self.assertIn('/assets/styles.css?v=6', html)
         self.assertIn('/assets/app.js?v=10', html)
 
         response = await self.client.get("/assets/styles.css")
@@ -352,6 +353,37 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(r'"off": "\u95dc\u9589\u5faa\u74b0"', javascript)
         self.assertIn('repeat.dataset.action = nextAction', javascript)
         self.assertIn('class="button ghost playlist-queue"', javascript)
+
+    async def test_volume_control_is_grouped_with_transport_controls(self):
+        class _TransportVolumeParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+                self.volume_is_in_transport = False
+
+            def handle_starttag(self, tag, attrs):
+                attributes = dict(attrs)
+                is_transport = (
+                    tag == "div"
+                    and "transport" in attributes.get("class", "").split()
+                )
+                parent_is_transport = self.stack[-1][1] if self.stack else False
+                is_in_transport = parent_is_transport or is_transport
+                if attributes.get("id") == "volume-range":
+                    self.volume_is_in_transport = is_in_transport
+                if tag not in {"input", "img", "meta", "link", "br", "hr"}:
+                    self.stack.append((tag, is_in_transport))
+
+            def handle_endtag(self, _tag):
+                if self.stack:
+                    self.stack.pop()
+
+        response = await self.client.get("/")
+        self.assertEqual(response.status, 200)
+        parser = _TransportVolumeParser()
+        parser.feed(await response.text())
+
+        self.assertTrue(parser.volume_is_in_transport)
 
     async def test_long_track_titles_scroll_only_when_they_overflow(self):
         response = await self.client.get("/")
