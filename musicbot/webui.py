@@ -32,6 +32,35 @@ _ASSET_CONTENT_TYPES = {
 _PROTECTED_PERMISSION_GROUPS = {"owner", "default"}
 
 
+def public_api_routes(controller: Any) -> list[Any]:
+    """Return the API routes safe to expose through the authenticated proxy."""
+    return [
+        web.get("/api/status", controller._handle_status),
+        web.get("/api/guilds", controller._handle_guilds),
+        web.get("/api/player", controller._handle_player),
+        web.post("/api/player/action", controller._handle_player_action),
+        web.post("/api/player/volume", controller._handle_player_volume),
+        web.post("/api/player/seek", controller._handle_player_seek),
+        web.post("/api/queue/add", controller._handle_queue_add),
+        web.post("/api/queue/reorder", controller._handle_queue_reorder),
+        web.delete("/api/queue/{index}", controller._handle_queue_delete),
+        web.get("/api/playlists", controller._handle_playlists),
+        web.post(
+            "/api/playlists/{name}/queue",
+            controller._handle_playlist_queue_add,
+        ),
+        web.get(
+            "/api/playlists/{name}/titles",
+            controller._handle_playlist_titles,
+        ),
+        web.post("/api/playlists", controller._handle_playlists_post),
+        web.delete(
+            "/api/playlists/{name}/{index}",
+            controller._handle_playlist_track_delete,
+        ),
+    ]
+
+
 def is_loopback_host(host: str) -> bool:
     """Return True only for the host forms accepted by the local Web UI."""
     if not host:
@@ -216,33 +245,11 @@ class MusicBotWebUI:
             [
                 web.get("/", self._handle_index),
                 web.get("/assets/{name}", self._handle_asset),
-                web.get("/api/status", self._handle_status),
-                web.get("/api/guilds", self._handle_guilds),
-                web.get("/api/player", self._handle_player),
-                web.post("/api/player/action", self._handle_player_action),
-                web.post("/api/player/volume", self._handle_player_volume),
-                web.post("/api/player/seek", self._handle_player_seek),
-                web.post("/api/queue/add", self._handle_queue_add),
-                web.post("/api/queue/reorder", self._handle_queue_reorder),
-                web.delete("/api/queue/{index}", self._handle_queue_delete),
+                *public_api_routes(self),
                 web.get("/api/config", self._handle_config),
                 web.patch("/api/config", self._handle_config_patch),
                 web.post("/api/config/reload", self._handle_config_reload),
                 web.get("/api/logs", self._handle_logs),
-                web.get("/api/playlists", self._handle_playlists),
-                web.post(
-                    "/api/playlists/{name}/queue",
-                    self._handle_playlist_queue_add,
-                ),
-                web.get(
-                    "/api/playlists/{name}/titles",
-                    self._handle_playlist_titles,
-                ),
-                web.post("/api/playlists", self._handle_playlists_post),
-                web.delete(
-                    "/api/playlists/{name}/{index}",
-                    self._handle_playlist_track_delete,
-                ),
                 web.get("/api/permissions", self._handle_permissions),
                 web.patch("/api/permissions", self._handle_permissions_patch),
                 web.post("/api/permissions/group", self._handle_permission_group),

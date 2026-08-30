@@ -62,6 +62,7 @@ from .player import MusicPlayer
 from .playlist import Playlist
 from .spotify import Spotify
 from .webui import MusicBotWebUI
+from .webui_public import MusicBotPublicWebUI
 from .utils import (
     _func_,
     count_members_in_voice,
@@ -198,6 +199,7 @@ class MusicBot(discord.Client):
         self.spotify: Optional[Spotify] = None
         self.session: Optional[aiohttp.ClientSession] = None
         self.webui: Optional[MusicBotWebUI] = None
+        self.webui_public: Optional[MusicBotPublicWebUI] = None
 
         intents = discord.Intents.all()
         intents.typing = False
@@ -329,6 +331,7 @@ class MusicBot(discord.Client):
 
         log.info("Initialized, now connecting to discord.")
         await self._start_webui()
+        await self._start_webui_public()
         # this creates an output similar to a progress indicator.
         muffle_discord_console_log()
         self.create_task(self._test_network(), name="MB_PingTest")
@@ -369,6 +372,42 @@ class MusicBot(discord.Client):
         webui = self.webui
         self.webui = None
         await webui.stop()
+
+    async def _start_webui_public(self) -> None:
+        """Start the optional proxy-facing API without affecting the local UI."""
+        if not self.config.webui_public_enabled or self.webui_public is not None:
+            return
+
+        try:
+            webui_public = MusicBotPublicWebUI(
+                self,
+                port=self.config.webui_public_port,
+            )
+            await webui_public.start()
+        except Exception:
+            log.exception(
+                "Could not start the public MusicBot API on 127.0.0.1:%s",
+                self.config.webui_public_port,
+            )
+            self.webui_public = None
+            return
+
+        self.webui_public = webui_public
+        log.info(
+            "MusicBot public API is available on 127.0.0.1:%s",
+            self.config.webui_public_port,
+        )
+
+    async def _stop_webui_public(self) -> None:
+        """Stop the proxy-facing API independently from the local UI."""
+        if self.webui_public is None:
+            return
+        webui_public = self.webui_public
+        self.webui_public = None
+        try:
+            await webui_public.stop()
+        except Exception:
+            log.exception("Could not stop the public MusicBot API cleanly")
 
     async def _test_network(self) -> None:
         """
@@ -2126,6 +2165,7 @@ class MusicBot(discord.Client):
             ) from e
 
         finally:
+            await self._stop_webui_public()
             await self._stop_webui()
 
             # Shut down the thread pool executor.

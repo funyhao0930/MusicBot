@@ -353,6 +353,14 @@ CONFIG_OPTION_TRANSLATIONS: Dict[str, OptionTranslation] = {
         "啟動時開啟網頁控制台",
         "MusicBot 啟動時自動開啟本機瀏覽器控制中心。",
     ),
+    "WebUIPublicEnabled": (
+        "啟用公開代理 API",
+        "啟用僅供 HTTPS 代理使用、受權杖保護的本機 API。",
+    ),
+    "WebUIPublicPort": (
+        "公開代理 API 連接埠",
+        "受權杖保護的本機 API 所使用的 TCP 連接埠。",
+    ),
 }
 
 

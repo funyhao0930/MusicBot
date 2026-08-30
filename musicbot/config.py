@@ -920,6 +920,22 @@ class Config:
             default=ConfigDefaults.webui_auto_open,
             comment="Open the local browser control center when MusicBot starts.",
         )
+        self.webui_public_enabled: bool = self.register.init_option(
+            section="WebUI",
+            option="WebUIPublicEnabled",
+            dest="webui_public_enabled",
+            getter="getboolean",
+            default=ConfigDefaults.webui_public_enabled,
+            comment="Enable the authenticated loopback API for an HTTPS proxy.",
+        )
+        self.webui_public_port: int = self.register.init_option(
+            section="WebUI",
+            option="WebUIPublicPort",
+            dest="webui_public_port",
+            getter="getint",
+            default=ConfigDefaults.webui_public_port,
+            comment="Loopback TCP port used by the authenticated public API.",
+        )
 
         # Convert all path constants into config as pathlib.Path objects.
         self.data_path = pathlib.Path(DEFAULT_DATA_DIR).resolve()
@@ -1097,6 +1113,24 @@ class Config:
                 ConfigDefaults.webui_port,
             )
             self.webui_port = ConfigDefaults.webui_port
+
+        if not 1 <= int(self.webui_public_port) <= 65535:
+            log.warning(
+                "WebUIPublicPort is outside the valid TCP port range. "
+                "Falling back to %s.",
+                ConfigDefaults.webui_public_port,
+            )
+            self.webui_public_port = ConfigDefaults.webui_public_port
+
+        if self.webui_public_port == self.webui_port:
+            fallback_port = ConfigDefaults.webui_public_port
+            if fallback_port == self.webui_port:
+                fallback_port += 1
+            log.warning(
+                "WebUIPublicPort must differ from WebUIPort. Falling back to %s.",
+                fallback_port,
+            )
+            self.webui_public_port = fallback_port
 
     async def async_validate(self, bot: "MusicBot") -> None:
         """
@@ -1304,6 +1338,8 @@ class ConfigDefaults:
     webui_host: str = "127.0.0.1"
     webui_port: int = 8765
     webui_auto_open: bool = True
+    webui_public_enabled: bool = False
+    webui_public_port: int = 8766
 
     command_prefix: str = "!"
     commands_via_mention: bool = True
