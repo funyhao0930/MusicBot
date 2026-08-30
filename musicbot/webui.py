@@ -262,9 +262,15 @@ class MusicBotWebUI:
         if self._runner is not None:
             return
         self._runner = web.AppRunner(self.create_app(), access_log=None)
-        await self._runner.setup()
-        self._site = web.TCPSite(self._runner, self.host, self.port)
-        await self._site.start()
+        try:
+            await self._runner.setup()
+            self._site = web.TCPSite(self._runner, self.host, self.port)
+            await self._site.start()
+        except Exception:
+            await self._runner.cleanup()
+            self._runner = None
+            self._site = None
+            raise
         if self.auto_open:
             webbrowser.open(f"http://{self.host}:{self.port}")
 
@@ -709,13 +715,18 @@ class MusicBotWebUI:
                 "source": source,
                 "title": self._playlist_title_cache.get(source, source),
             }
-            for source in playlist
+            for source in self._playlist_sources(playlist)
         ]
         return {
             "name": name,
             "filename": playlist.filename,
             "tracks": tracks,
         }
+
+    @staticmethod
+    def _playlist_sources(playlist: Any) -> list[str]:
+        """Return playlist sources available to this Web UI variant."""
+        return list(playlist)
 
     async def _playlist_track_payload(self, source: str) -> Dict[str, str]:
         cached_title = self._playlist_title_cache.get(source)
@@ -758,7 +769,7 @@ class MusicBotWebUI:
             name = self._playlist_name(request.match_info["name"])
             playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
             await playlist.load()
-            sources = list(playlist)
+            sources = self._playlist_sources(playlist)
             if not sources:
                 raise ValueError("The playlist does not contain any tracks")
 
@@ -809,7 +820,10 @@ class MusicBotWebUI:
             playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
             await playlist.load()
             tracks = await asyncio.gather(
-                *(self._playlist_track_payload(source) for source in playlist)
+                *(
+                    self._playlist_track_payload(source)
+                    for source in self._playlist_sources(playlist)
+                )
             )
         except (OSError, ValueError) as exc:
             return self._error(str(exc), status=400)

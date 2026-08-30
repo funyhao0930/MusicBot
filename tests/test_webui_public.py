@@ -19,6 +19,26 @@ class PublicRouteDefinitionTests(unittest.TestCase):
             "musicbot.webui must expose reusable public API routes",
         )
 
+    def test_public_media_input_allows_search_and_youtube_only(self) -> None:
+        from musicbot.webui_public import validate_public_media_input
+
+        self.assertEqual(validate_public_media_input("lofi hip hop"), "lofi hip hop")
+        self.assertEqual(
+            validate_public_media_input("https://youtu.be/dQw4w9WgXcQ"),
+            "https://youtu.be/dQw4w9WgXcQ",
+        )
+        for unsafe in (
+            "http://127.0.0.1:8080/private",
+            "http://192.168.1.2/admin",
+            "http://169.254.169.254/latest/meta-data",
+            "file:///C:/Windows/win.ini",
+            "https://example.com/audio.mp3",
+            "https://youtube.com/redirect?q=http://127.0.0.1",
+        ):
+            with self.subTest(unsafe=unsafe):
+                with self.assertRaises(ValueError):
+                    validate_public_media_input(unsafe)
+
 
 class PublicWebUIAPITests(unittest.IsolatedAsyncioTestCase):
     proxy_token = "proxy-token-for-tests"
@@ -120,6 +140,31 @@ class PublicWebUIAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(accepted.status, 200)
         self.assertEqual(player.calls, ["pause"])
 
+    async def test_public_queue_rejects_internal_and_unapproved_urls(self) -> None:
+        ui, client, _player = await self._start_client()
+        headers = {
+            **self._proxy_headers(),
+            "X-MusicBot-CSRF": ui.csrf_token,
+        }
+
+        for query in (
+            "http://127.0.0.1:8765/api/config",
+            "http://10.0.0.1/private",
+            "file:///C:/Windows/win.ini",
+            "https://example.com/media.mp3",
+        ):
+            with self.subTest(query=query):
+                response = await client.post(
+                    "/api/queue/add",
+                    json={"guild_id": 1, "query": query},
+                    headers=headers,
+                )
+                self.assertEqual(response.status, 400)
+                self.assertEqual(
+                    await response.json(),
+                    {"ok": False, "error": "請求內容不正確。"},
+                )
+
     async def test_public_app_registers_only_the_approved_routes(self) -> None:
         ui, _client, _player = await self._start_client()
         routes = {
@@ -198,6 +243,24 @@ class PublicWebUIAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["error"], "伺服器暫時無法處理請求，請稍後再試。")
         self.assertNotIn("filesystem secret path", repr(payload))
 
+    async def test_public_handler_4xx_body_is_replaced_with_safe_chinese_error(self) -> None:
+        base = self._public_class()
+
+        class UnsafeClientErrorWebUI(base):
+            async def _handle_status(self, _request):
+                return web.json_response(
+                    {"error": "C:\\private\\playlist.txt token=secret"}, status=400
+                )
+
+        _ui, client, _player = await self._start_client(UnsafeClientErrorWebUI)
+        response = await client.get("/api/status", headers=self._proxy_headers())
+
+        self.assertEqual(response.status, 400)
+        payload = await response.json()
+        self.assertEqual(payload, {"ok": False, "error": "請求內容不正確。"})
+        self.assertNotIn("private", repr(payload))
+        self.assertNotIn("token", repr(payload))
+
 
 class PublicProxyTokenTests(unittest.TestCase):
     def test_proxy_token_is_created_once_with_high_entropy(self) -> None:
@@ -218,16 +281,12 @@ class PublicProxyTokenTests(unittest.TestCase):
 
 
 class PublicWebUIOptionsFileTests(unittest.TestCase):
-    def test_example_disables_public_api_and_local_options_enable_it(self) -> None:
+    def test_example_disables_public_api_by_default(self) -> None:
         example = configparser.ConfigParser(interpolation=None)
         example.read("config/example_options.ini", encoding="utf-8")
-        local = configparser.ConfigParser(interpolation=None)
-        local.read("config/options.ini", encoding="utf-8")
 
         self.assertFalse(example.getboolean("WebUI", "WebUIPublicEnabled"))
         self.assertEqual(example.getint("WebUI", "WebUIPublicPort"), 8766)
-        self.assertTrue(local.getboolean("WebUI", "WebUIPublicEnabled"))
-        self.assertEqual(local.getint("WebUI", "WebUIPublicPort"), 8766)
 
 
 if __name__ == "__main__":

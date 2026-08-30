@@ -23,6 +23,7 @@ config/blocklist_songs.txt
 config/playlists/
 media/
 artifacts/
+/webui-site/
 /tmp*.tmp*
 
 docker-compose.yml

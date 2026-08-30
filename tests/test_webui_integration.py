@@ -1,4 +1,6 @@
+import asyncio
 import pathlib
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -8,7 +10,13 @@ class WebUIConfigIntegrationTests(unittest.TestCase):
     def test_options_file_registers_local_webui_settings(self) -> None:
         from musicbot.config import Config
 
-        config = Config(pathlib.Path("config/options.ini"))
+        options = pathlib.Path("config/example_options.ini").read_text(
+            encoding="utf-8"
+        ).replace("WebUIPublicEnabled = no", "WebUIPublicEnabled = yes")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            options_path = pathlib.Path(temp_dir) / "options.ini"
+            options_path.write_text(options, encoding="utf-8")
+            config = Config(options_path)
 
         self.assertTrue(config.webui_enabled)
         self.assertEqual(config.webui_host, "127.0.0.1")
@@ -52,6 +60,23 @@ class WebUIConfigIntegrationTests(unittest.TestCase):
 
 
 class WebUILifecycleIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_webui_bind_failure_cleans_partially_started_runner(self) -> None:
+        from musicbot.webui_public import MusicBotPublicWebUI
+
+        blocker = await asyncio.start_server(lambda _r, _w: None, "127.0.0.1", 0)
+        self.addAsyncCleanup(blocker.wait_closed)
+        self.addCleanup(blocker.close)
+        port = blocker.sockets[0].getsockname()[1]
+        webui = MusicBotPublicWebUI(
+            SimpleNamespace(), port=port, proxy_token="test-proxy-token"
+        )
+
+        with self.assertRaises(OSError):
+            await webui.start()
+
+        self.assertIsNone(webui._runner)
+        self.assertIsNone(webui._site)
+
     async def test_musicbot_starts_and_stops_enabled_webui(self) -> None:
         from musicbot.bot import MusicBot
 
