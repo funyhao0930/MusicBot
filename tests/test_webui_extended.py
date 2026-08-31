@@ -350,8 +350,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('/assets/icon-shuffle.svg', html)
         self.assertIn('/assets/icon-repeat.svg', html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=8', html)
-        self.assertIn('/assets/app.js?v=13', html)
+        self.assertIn('/assets/styles.css?v=10', html)
+        self.assertIn('/assets/app.js?v=15', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -383,8 +383,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('const previous = $("#transport-previous")', javascript)
         self.assertIn('const repeat = $("#transport-repeat")', javascript)
         self.assertIn('repeat.dataset.action = nextAction', javascript)
-        self.assertIn('previous.disabled = !player?.can_previous', javascript)
-        self.assertIn('class="button ghost playlist-queue"', javascript)
+        self.assertIn('previous.disabled = state.mutationBusy || !player?.can_previous', javascript)
+        self.assertIn('class="playlist-queue icon-button"', javascript)
         self.assertIn('/api/playlists/${encodeURIComponent(name)}/tracks', javascript)
         self.assertIn('queue-playlist-dialog', javascript)
         self.assertIn("歌名載入中…", javascript)
@@ -604,6 +604,75 @@ vm.runInContext(`renderQueue(${JSON.stringify(changedSnapshot)})`, context);
 if (list.replaceCount !== 2) {
   throw new Error("changed queue did not rebuild");
 }
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_frontend_reorder_keeps_the_previous_queue_when_the_api_rejects(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const calls = [];
+const responses = [];
+const document = {
+  body: { classList: { toggle() {} } },
+  addEventListener() {},
+  querySelector() { return { disabled: false, textContent: "", classList: { toggle() {} } }; },
+  querySelectorAll() { return []; },
+};
+const context = {
+  document,
+  window: { addEventListener() {}, confirm() { return false; }, prompt() { return null; } },
+  console,
+  fetch: async (path, options) => {
+    calls.push({ path, options });
+    return responses.shift();
+  },
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout() {},
+  URLSearchParams,
+  encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+vm.runInContext(`
+  setMutationBusy = busy => { state.mutationBusy = busy; };
+  renderQueue = queue => { globalThis.renderedQueue = queue.map(item => item.title); };
+  toast = message => { globalThis.lastToast = message; };
+  state.guildId = "guild-1";
+  state.player = { queue: [{ title: "First" }, { title: "Second" }] };
+`, context);
+
+const response = (ok, payload) => ({
+  ok,
+  status: ok ? 200 : 500,
+  text: async () => JSON.stringify(payload),
+});
+(async () => {
+  responses.push(response(true, { queue: [{ title: "Second" }, { title: "First" }] }));
+  await vm.runInContext("reorderQueue(1, 0)", context);
+  if (calls.length !== 1 || calls[0].path !== "/api/queue/reorder") throw new Error("reorder endpoint was not called");
+  const payload = JSON.parse(calls[0].options.body);
+  if (payload.source_index !== 1 || payload.target_index !== 0) throw new Error("reorder indexes are wrong");
+  if (context.renderedQueue.join(",") !== "Second,First") throw new Error("successful reorder did not render the response queue");
+
+  responses.push(response(false, { error: "reorder failed" }));
+  await vm.runInContext("reorderQueue(0, 1)", context);
+  if (context.renderedQueue.join(",") !== "First,Second") throw new Error("failed reorder did not restore the previous queue");
+
+  vm.runInContext("state.mutationBusy = true", context);
+  await vm.runInContext("reorderQueue(0, 1)", context);
+  if (calls.length !== 2) throw new Error("busy gate submitted a duplicate reorder");
+})().catch(error => { console.error(error.stack); process.exit(1); });
 """
         result = subprocess.run(
             ["node", "-e", harness, str(app_js)],

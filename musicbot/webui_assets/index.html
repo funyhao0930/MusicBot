@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>糖音機 控制中心</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=8">
+  <link rel="stylesheet" href="/assets/styles.css?v=10">
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -105,7 +105,7 @@
               </div>
               <div class="volume-row">
                 <label for="volume-range">音量 <output id="volume-output">25%</output></label>
-                <input id="volume-range" type="range" min="1" max="100" value="25">
+                <input id="volume-range" type="range" min="1" max="100" value="25" data-mutation-control>
               </div>
             </div>
           </section>
@@ -113,12 +113,12 @@
           <aside class="queue-panel" aria-labelledby="queue-heading">
             <div class="panel-heading">
               <div><p class="section-kicker">UP NEXT</p><h2 id="queue-heading">播放佇列</h2></div>
-              <div class="queue-heading-actions"><span class="queue-count" id="queue-count">0 首</span><button class="queue-clear" id="queue-clear" type="button" data-action="clear" disabled>清空</button></div>
+              <div class="queue-heading-actions"><span class="queue-count" id="queue-count">0 首</span><button class="queue-clear icon-button danger" id="queue-clear" type="button" data-action="clear" aria-label="清空播放佇列" title="清空播放佇列" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-7 0 1 14h4l1-14"/></svg></button></div>
             </div>
 
             <form class="add-track" id="add-track-form">
-              <input id="track-query" type="text" autocomplete="off" placeholder="貼上連結或輸入歌曲名稱" aria-label="加入歌曲">
-              <button class="button primary" type="submit">加入</button>
+              <input id="track-query" type="text" autocomplete="off" placeholder="貼上連結或輸入歌曲名稱" aria-label="加入歌曲" data-mutation-control>
+              <button class="button primary" type="submit" data-mutation-control>加入</button>
             </form>
 
             <div class="queue-bulk-actions" id="queue-bulk-actions">
@@ -142,8 +142,13 @@
       <section class="page" data-page-panel="playlists">
         <div class="content-header">
           <div><p class="section-kicker">AUTOPLAY</p><h2>播放清單</h2></div>
-          <button class="button primary" id="new-playlist">新增清單</button>
+          <button class="button primary" id="new-playlist" type="button" aria-expanded="false">新增清單</button>
         </div>
+        <form class="create-playlist" id="playlist-create-form" hidden>
+          <input id="playlist-create-name" type="text" maxlength="80" autocomplete="off" placeholder="輸入播放清單名稱" aria-label="新播放清單名稱">
+          <button class="button primary" type="submit">建立</button>
+          <button class="button ghost" id="playlist-create-cancel" type="button">取消</button>
+        </form>
         <div class="playlist-workbench">
           <aside class="playlist-tabs" id="playlist-tabs" aria-label="播放清單"></aside>
           <section class="playlist-editor">
@@ -151,13 +156,13 @@
               <div><p class="section-kicker">TRACKS</p><h3 id="playlist-title">選擇播放清單</h3></div>
               <div class="playlist-heading-actions">
                 <span class="queue-count" id="playlist-count">0 首</span>
-                <button class="button ghost" id="playlist-queue-all" type="button">全部加入隊列</button>
+                <button class="button ghost" id="playlist-queue-all" type="button" data-mutation-control>全部加入隊列</button>
                 <button class="button danger" id="playlist-delete" type="button" hidden>刪除清單</button>
               </div>
             </div>
             <form class="add-track" id="playlist-add-form">
-              <input id="playlist-track" type="text" autocomplete="off" placeholder="貼上連結或輸入搜尋詞" aria-label="新增播放清單歌曲">
-              <button class="button primary" type="submit">加入</button>
+              <input id="playlist-track" type="text" autocomplete="off" placeholder="貼上連結或輸入搜尋詞" aria-label="新增播放清單歌曲" data-mutation-control>
+              <button class="button primary" type="submit" data-mutation-control>加入</button>
             </form>
             <div class="playlist-tracks" id="playlist-tracks"></div>
             <div class="empty-state" id="playlist-empty"><strong>這張清單還沒有歌</strong><p>加入連結或搜尋詞，糖音機 會依序播放。</p></div>
@@ -208,6 +213,10 @@
   </div>
 
   <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  <div class="offline-banner" id="offline-banner" role="status" hidden>
+    <span class="spinner" aria-hidden="true"></span>
+    <span>糖音機暫時無法連線，控制台會自動重試。</span>
+  </div>
   <dialog class="playlist-dialog" id="queue-playlist-dialog" aria-labelledby="queue-playlist-dialog-title">
     <form id="queue-playlist-form" method="dialog">
       <div class="playlist-dialog-heading">
@@ -225,7 +234,7 @@
       </label>
       <div class="playlist-dialog-actions">
         <button class="button ghost" id="queue-playlist-cancel" type="button">取消</button>
-        <button class="button primary" id="queue-playlist-submit" type="submit">加入播放清單</button>
+        <button class="button primary" id="queue-playlist-submit" type="submit" data-mutation-control>加入播放清單</button>
       </div>
     </form>
   </dialog>
@@ -233,6 +242,6 @@
     <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=13" defer></script>
+  <script src="/assets/app.js?v=15" defer></script>
 </body>
 </html>

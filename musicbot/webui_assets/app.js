@@ -7,6 +7,7 @@ const state = {
   currentUrl: "",
   lastSync: 0,
   connected: false,
+  mutationBusy: false,
   scrubbing: false,
   draggingIndex: null,
   queueRenderKey: null,
@@ -17,6 +18,7 @@ const state = {
   playlistTitleLoads: {},
   playlistVisibleCounts: {},
   currentPlaylist: "",
+  playlistCreateOpen: false,
   permissions: [],
   logs: [],
 };
@@ -37,6 +39,12 @@ const CONTROL_ICONS = {
   pause: "/assets/icon-pause.svg",
   repeat: "/assets/icon-repeat.svg",
   repeat_one: "/assets/icon-repeat-one.svg",
+};
+const QUEUE_ACTION_ICONS = {
+  up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>',
+  remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-7 0 1 14h4l1-14"/></svg>',
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -99,7 +107,32 @@ function setConnected(connected, message = "已連線") {
   const pill = $("#connection-pill");
   pill.classList.toggle("is-offline", !connected);
   $("#connection-text").textContent = message;
-  $("#reconnect-layer").hidden = connected;
+  const banner = $("#offline-banner");
+  if (banner) banner.hidden = connected;
+  if (connected) $("#reconnect-layer").hidden = true;
+}
+
+function setMutationBusy(busy) {
+  state.mutationBusy = busy;
+  document.body?.classList?.toggle("is-mutating", busy);
+  if (document.querySelectorAll) {
+    $$("[data-mutation-control]").forEach(control => { control.disabled = busy; });
+  }
+  const createButton = $("#new-playlist");
+  if (createButton) createButton.disabled = busy;
+  if (state.player) renderPlayer(state.player);
+  else syncQueueSelectionControls([]);
+  if (state.playlistsLoaded) renderPlaylistEditor();
+}
+
+async function runMutation(work) {
+  if (state.mutationBusy) return null;
+  setMutationBusy(true);
+  try {
+    return await work();
+  } finally {
+    setMutationBusy(false);
+  }
 }
 
 function switchPage(name) {
@@ -223,7 +256,7 @@ function renderPlayer(player) {
   const progress = Math.min(player?.progress || 0, total || Number.MAX_VALUE);
   const progressRange = $("#progress-range");
   progressRange.max = total || 100;
-  progressRange.disabled = !player?.current || total <= 0;
+  progressRange.disabled = state.mutationBusy || !player?.current || total <= 0;
   const progressPercent = total > 0 ? Math.min(100, Math.max(0, progress / total * 100)) : 0;
   progressRange.style?.setProperty?.("--progress-fill", `${progressPercent}%`);
   if (!state.scrubbing) {
@@ -238,7 +271,7 @@ function renderPlayer(player) {
   $("#play-toggle-icon").src = paused || !player?.current ? CONTROL_ICONS.play : CONTROL_ICONS.pause;
   toggle.setAttribute("aria-label", paused || !player?.current ? "播放" : "暫停");
   toggle.title = paused || !player?.current ? "播放" : "暫停";
-  toggle.disabled = !player?.current;
+  toggle.disabled = state.mutationBusy || !player?.current;
 
   const shuffle = $("#transport-shuffle");
   const shuffleEnabled = Boolean(player?.shuffle);
@@ -246,13 +279,13 @@ function renderPlayer(player) {
   shuffle.setAttribute("aria-pressed", String(shuffleEnabled));
   shuffle.setAttribute("aria-label", shuffleEnabled ? "啟用隨機播放" : "關閉隨機播放");
   $(".transport-state-dot", shuffle).hidden = !shuffleEnabled;
-  shuffle.disabled = !player?.current && !(player?.queue || []).length;
+  shuffle.disabled = state.mutationBusy || (!player?.current && !(player?.queue || []).length);
 
   const previous = $("#transport-previous");
-  previous.disabled = !player?.can_previous;
+  previous.disabled = state.mutationBusy || !player?.can_previous;
 
   const next = $("#transport-next");
-  next.disabled = !player?.current;
+  next.disabled = state.mutationBusy || !player?.current;
 
   const repeat = $("#transport-repeat");
   const repeatMode = ["song", "all", "off"].includes(player?.repeat_mode)
@@ -272,9 +305,9 @@ function renderPlayer(player) {
   repeat.title = repeatLabel;
   $("#repeat-icon").src = repeatMode === "song" ? CONTROL_ICONS.repeat_one : CONTROL_ICONS.repeat;
   $("#repeat-state-dot").hidden = repeatMode !== "all";
-  repeat.disabled = !player?.current;
+  repeat.disabled = state.mutationBusy || !player?.current;
 
-  $("#transport-stop").disabled = !player?.current;
+  $("#transport-stop").disabled = state.mutationBusy || !player?.current;
 
   const volume = Math.round((player?.volume ?? .25) * 100);
   $("#volume-range").value = volume;
@@ -299,7 +332,7 @@ function syncQueueSelectionControls(queue) {
   const selectedLabel = $("#queue-selected-count");
   const addButton = $("#queue-add-to-playlist");
   if (selectAll) {
-    selectAll.disabled = queue.length === 0;
+    selectAll.disabled = state.mutationBusy || queue.length === 0;
     selectAll.checked = queue.length > 0 && selectedCount === queue.length;
     selectAll.indeterminate = selectedCount > 0 && selectedCount < queue.length;
   }
@@ -307,10 +340,11 @@ function syncQueueSelectionControls(queue) {
   if (queueList?.querySelectorAll) {
     $$(".queue-select-input", queueList).forEach((checkbox, index) => {
       checkbox.checked = state.selectedQueueIndexes.has(index);
+      checkbox.disabled = state.mutationBusy;
     });
   }
   if (selectedLabel) selectedLabel.textContent = selectedCount ? `已選取 ${selectedCount} 首歌曲` : "未選取歌曲";
-  if (addButton) addButton.disabled = selectedCount === 0;
+  if (addButton) addButton.disabled = state.mutationBusy || selectedCount === 0;
   $("#queue-playlist-dialog-count").textContent = `已選取 ${selectedCount} 首歌曲`;
 }
 
@@ -322,7 +356,7 @@ function clearQueueSelection() {
 function renderQueue(queue) {
   const list = $("#queue-list");
   $("#queue-count").textContent = `${queue.length} 首`;
-  $("#queue-clear").disabled = queue.length === 0;
+  $("#queue-clear").disabled = state.mutationBusy || queue.length === 0;
   $("#queue-empty").hidden = queue.length > 0;
   list.hidden = queue.length === 0;
   syncQueueSelectionControls(queue);
@@ -334,6 +368,7 @@ function renderQueue(queue) {
     entry.requested_by || "",
   ]));
   if (renderKey === state.queueRenderKey) {
+    syncQueueRowControls(queue);
     syncQueueSelectionControls(queue);
     return;
   }
@@ -343,9 +378,10 @@ function renderQueue(queue) {
   list.replaceChildren(...queue.map((entry, index) => {
     const row = document.createElement("div");
     row.className = "queue-item";
-    row.draggable = true;
+    row.draggable = !state.mutationBusy;
     row.dataset.index = index;
-    row.innerHTML = `<input class="queue-select-input" type="checkbox" aria-label="選取第 ${index + 1} 首歌曲"><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="queue-copy"><strong></strong><small></small></div><button class="queue-remove" type="button" aria-label="從佇列移除">移除</button>`;
+    const disabled = state.mutationBusy ? " disabled" : "";
+    row.innerHTML = `<input class="queue-select-input" type="checkbox" aria-label="選取第 ${index + 1} 首歌曲"${disabled}><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="queue-copy"><strong></strong><small></small></div><div class="queue-row-actions"><button class="queue-move-up icon-button" type="button" aria-label="向上移動" title="向上移動"${state.mutationBusy || index === 0 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.up}</button><button class="queue-move-down icon-button" type="button" aria-label="向下移動" title="向下移動"${state.mutationBusy || index === queue.length - 1 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.down}</button><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></div>`;
     const checkbox = $(".queue-select-input", row);
     checkbox.checked = state.selectedQueueIndexes.has(index);
     checkbox.addEventListener("change", () => {
@@ -355,18 +391,37 @@ function renderQueue(queue) {
     });
     $("strong", row).textContent = entry.title;
     $("small", row).textContent = `${formatTime(entry.duration)} · ${entry.requested_by}`;
+    $(".queue-move-up", row).addEventListener("click", () => reorderQueue(index, index - 1));
+    $(".queue-move-down", row).addEventListener("click", () => reorderQueue(index, index + 1));
     $(".queue-remove", row).addEventListener("click", () => removeQueueItem(index, row));
     row.addEventListener("dragstart", () => { state.draggingIndex = index; row.classList.add("is-dragging"); });
     row.addEventListener("dragend", () => { state.draggingIndex = null; row.classList.remove("is-dragging"); });
     row.addEventListener("dragover", event => event.preventDefault());
     row.addEventListener("drop", async event => {
       event.preventDefault();
-      if (state.draggingIndex === null || state.draggingIndex === index) return;
+      if (state.mutationBusy || state.draggingIndex === null || state.draggingIndex === index) return;
       await reorderQueue(state.draggingIndex, index);
     });
     return row;
   }));
+  syncQueueRowControls(queue);
   syncQueueSelectionControls(queue);
+}
+
+function syncQueueRowControls(queue) {
+  const queueList = $("#queue-list");
+  if (!queueList?.querySelectorAll) return;
+  $$(".queue-item", queueList).forEach((row, index) => {
+    row.draggable = !state.mutationBusy;
+    const checkbox = $(".queue-select-input", row);
+    if (checkbox) checkbox.disabled = state.mutationBusy;
+    const moveUp = $(".queue-move-up", row);
+    if (moveUp) moveUp.disabled = state.mutationBusy || index === 0;
+    const moveDown = $(".queue-move-down", row);
+    if (moveDown) moveDown.disabled = state.mutationBusy || index === queue.length - 1;
+    const remove = $(".queue-remove", row);
+    if (remove) remove.disabled = state.mutationBusy;
+  });
 }
 
 async function submitQueuePlaylistBatch(name) {
@@ -431,74 +486,88 @@ async function submitQueuePlaylistDialog(event) {
     return;
   }
   const button = $("#queue-playlist-submit");
-  button.disabled = true;
-  button.textContent = "加入中";
-  try {
-    const result = await submitQueuePlaylistBatch(name);
-    const existing = state.playlists.find(playlist => playlist.name === result.playlist.name);
-    if (existing) Object.assign(existing, result.playlist);
-    else state.playlists.push(result.playlist);
-    state.playlistsLoaded = true;
-    renderPlaylists();
-    closeQueuePlaylistDialog();
-    const skipped = result.skipped_count || 0;
-    toast(skipped ? `已加入 ${result.added_count} 首，跳過 ${skipped} 首重複歌曲` : `已加入 ${result.added_count} 首歌曲`);
-  } catch (error) {
-    toast(error.message, "error");
-  } finally {
-    button.disabled = false;
-    button.textContent = "加入播放清單";
-  }
+  return runMutation(async () => {
+    button.textContent = "加入中";
+    try {
+      const result = await submitQueuePlaylistBatch(name);
+      const existing = state.playlists.find(playlist => playlist.name === result.playlist.name);
+      if (existing) Object.assign(existing, result.playlist);
+      else state.playlists.push(result.playlist);
+      state.playlistsLoaded = true;
+      renderPlaylists();
+      closeQueuePlaylistDialog();
+      const skipped = result.skipped_count || 0;
+      toast(skipped ? `已加入 ${result.added_count} 首，跳過 ${skipped} 首重複歌曲` : `已加入 ${result.added_count} 首歌曲`);
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      button.textContent = "加入播放清單";
+    }
+  });
 }
 
 async function playerAction(action, button) {
   if (!state.guildId) return;
-  button?.classList.add("is-switching");
-  try {
-    const result = await api("/api/player/action", { method: "POST", body: { guild_id: state.guildId, action } });
-    renderPlayer(result.player);
-  } catch (error) { toast(error.message, "error"); }
-  finally { setTimeout(() => button?.classList.remove("is-switching"), 220); }
+  return runMutation(async () => {
+    button?.classList.add("is-switching");
+    try {
+      const result = await api("/api/player/action", { method: "POST", body: { guild_id: state.guildId, action } });
+      renderPlayer(result.player);
+    } catch (error) { toast(error.message, "error"); }
+    finally { setTimeout(() => button?.classList.remove("is-switching"), 220); }
+  });
 }
 
 async function seekPlayer(position) {
   if (!state.guildId || !state.player?.current) return;
-  const duration = Number(state.player.current.duration) || 0;
-  const target = Math.min(Math.max(Number(position) || 0, 0), duration);
-  try {
-    const result = await api("/api/player/seek", {
-      method: "POST",
-      body: { guild_id: state.guildId, position: target },
-    });
-    if (result.player) result.player.progress = result.position;
-    state.scrubbing = false;
-    renderPlayer(result.player || state.player);
-  } catch (error) {
+  if (state.mutationBusy) {
     state.scrubbing = false;
     renderPlayer(state.player);
-    toast(error.message, "error");
+    return;
   }
+  const duration = Number(state.player.current.duration) || 0;
+  const target = Math.min(Math.max(Number(position) || 0, 0), duration);
+  return runMutation(async () => {
+    try {
+      const result = await api("/api/player/seek", {
+        method: "POST",
+        body: { guild_id: state.guildId, position: target },
+      });
+      if (result.player) result.player.progress = result.position;
+      state.scrubbing = false;
+      renderPlayer(result.player || state.player);
+    } catch (error) {
+      state.scrubbing = false;
+      renderPlayer(state.player);
+      toast(error.message, "error");
+    }
+  });
 }
 
 async function removeQueueItem(index, row) {
-  row.classList.add("is-removing");
-  try {
-    const result = await api(`/api/queue/${index}?guild_id=${state.guildId}`, { method: "DELETE" });
-    setTimeout(() => renderQueue(result.queue), 180);
-  } catch (error) {
-    row.classList.remove("is-removing");
-    toast(error.message, "error");
-  }
+  return runMutation(async () => {
+    row.classList.add("is-removing");
+    try {
+      const result = await api(`/api/queue/${index}?guild_id=${state.guildId}`, { method: "DELETE" });
+      setTimeout(() => renderQueue(result.queue), 180);
+    } catch (error) {
+      row.classList.remove("is-removing");
+      toast(error.message, "error");
+    }
+  });
 }
 
 async function reorderQueue(source, target) {
-  try {
-    const result = await api("/api/queue/reorder", { method: "POST", body: { guild_id: state.guildId, source_index: source, target_index: target } });
-    renderQueue(result.queue);
-  } catch (error) {
-    renderQueue(state.player?.queue || []);
-    toast(error.message, "error");
-  }
+  if (!state.guildId || source === target) return;
+  return runMutation(async () => {
+    try {
+      const result = await api("/api/queue/reorder", { method: "POST", body: { guild_id: state.guildId, source_index: source, target_index: target } });
+      renderQueue(result.queue);
+    } catch (error) {
+      renderQueue(state.player?.queue || []);
+      toast(error.message, "error");
+    }
+  });
 }
 
 async function refreshSnapshot() {
@@ -625,10 +694,10 @@ function renderPlaylistEditor() {
   $("#playlist-title").textContent = playlist?.name || "選擇播放清單";
   $("#playlist-count").textContent = `${tracks.length} 首`;
   $("#playlist-empty").hidden = tracks.length > 0;
-  $("#playlist-add-form").querySelectorAll("input, button").forEach(control => { control.disabled = !playlist; });
-  $("#playlist-queue-all").disabled = !playlist || tracks.length === 0;
+  $("#playlist-add-form").querySelectorAll("input, button").forEach(control => { control.disabled = state.mutationBusy || !playlist; });
+  $("#playlist-queue-all").disabled = state.mutationBusy || !playlist || tracks.length === 0;
   $("#playlist-delete").hidden = !playlist || playlist.deletable !== true;
-  $("#playlist-delete").disabled = !playlist || playlist.deletable !== true;
+  $("#playlist-delete").disabled = state.mutationBusy || !playlist || playlist.deletable !== true;
 
   const root = $("#playlist-tracks");
   const visibleCount = playlist
@@ -642,7 +711,8 @@ function renderPlaylistEditor() {
     const row = document.createElement("div");
     row.className = "playlist-track";
     row.dataset.source = source;
-    row.innerHTML = `<span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="playlist-track-copy"><strong></strong><small></small></div><div class="playlist-track-actions"><button class="button ghost playlist-queue" type="button">加入隊列</button><button class="queue-remove" type="button">移除</button></div>`;
+    const disabled = state.mutationBusy ? " disabled" : "";
+    row.innerHTML = `<span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="playlist-track-copy"><strong></strong><small></small></div><div class="playlist-track-actions"><button class="playlist-queue icon-button" type="button" aria-label="加入佇列" title="加入佇列"${disabled}>${QUEUE_ACTION_ICONS.play}</button><button class="playlist-remove icon-button danger" type="button" aria-label="從播放清單移除" title="從播放清單移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></div>`;
     $("strong", row).textContent = title;
     $("strong", row).classList.toggle("playlist-track-title-loading", titleState === "loading");
     $("small", row).textContent = source;
@@ -652,33 +722,32 @@ function renderPlaylistEditor() {
         toast("請先選擇 Discord 伺服器", "error");
         return;
       }
-      queueButton.disabled = true;
-      queueButton.textContent = "加入中";
-      try {
-        const result = await api("/api/queue/add", {
-          method: "POST",
-          body: { guild_id: state.guildId, query: source },
-        });
-        renderQueue(result.queue);
-        toast(`已加入 ${result.entry.title}`);
-      } catch (error) {
-        toast(error.message, "error");
-      } finally {
-        queueButton.disabled = false;
-        queueButton.textContent = "加入隊列";
-      }
+      await runMutation(async () => {
+        try {
+          const result = await api("/api/queue/add", {
+            method: "POST",
+            body: { guild_id: state.guildId, query: source },
+          });
+          renderQueue(result.queue);
+          toast(`已加入 ${result.added_count} 首歌曲`);
+        } catch (error) {
+          toast(error.message, "error");
+        }
+      });
     });
-    $(".queue-remove", row).addEventListener("click", async () => {
-      row.classList.add("is-removing");
-      try {
-        const result = await api(`/api/playlists/${encodeURIComponent(playlist.name)}/${index}`, { method: "DELETE" });
-        const target = state.playlists.find(item => item.name === playlist.name);
-        if (target) target.tracks = result.playlist.tracks;
-        setTimeout(renderPlaylistEditor, 180);
-      } catch (error) {
-        row.classList.remove("is-removing");
-        toast(error.message, "error");
-      }
+    $(".playlist-remove", row).addEventListener("click", async () => {
+      await runMutation(async () => {
+        row.classList.add("is-removing");
+        try {
+          const result = await api(`/api/playlists/${encodeURIComponent(playlist.name)}/${index}`, { method: "DELETE" });
+          const target = state.playlists.find(item => item.name === playlist.name);
+          if (target) target.tracks = result.playlist.tracks;
+          setTimeout(renderPlaylistEditor, 180);
+        } catch (error) {
+          row.classList.remove("is-removing");
+          toast(error.message, "error");
+        }
+      });
     });
     return row;
   });
@@ -711,7 +780,9 @@ function renderPlaylists() {
     const button = document.createElement("button");
     button.className = `playlist-tab${playlist.name === state.currentPlaylist ? " is-active" : ""}`;
     button.type = "button";
-    button.textContent = `${playlist.name} · ${playlist.tracks.length}`;
+    button.innerHTML = '<span class="playlist-tab-name"></span><small class="playlist-tab-count"></small>';
+    $(".playlist-tab-name", button).textContent = playlist.name;
+    $(".playlist-tab-count", button).textContent = `${playlist.tracks.length} 首`;
     button.addEventListener("click", () => {
       state.currentPlaylist = playlist.name;
       renderPlaylists();
@@ -784,17 +855,31 @@ async function loadPlaylists(force = false) {
   }
 }
 
-async function createPlaylist() {
-  const name = window.prompt("新播放清單名稱");
+function setPlaylistCreateOpen(open) {
+  state.playlistCreateOpen = open;
+  const form = $("#playlist-create-form");
+  const button = $("#new-playlist");
+  form.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+  if (open) $("#playlist-create-name").focus();
+}
+
+async function createPlaylist(event) {
+  event.preventDefault();
+  const name = $("#playlist-create-name").value.trim();
   if (!name) return;
-  try {
-    const result = await api("/api/playlists", { method: "POST", body: { action: "create", name } });
-    state.currentPlaylist = result.playlist.name;
-    await loadPlaylists(true);
-    toast(`已建立 ${result.playlist.name}`);
-  } catch (error) {
-    toast(error.message, "error");
-  }
+  return runMutation(async () => {
+    try {
+      const result = await api("/api/playlists", { method: "POST", body: { action: "create", name } });
+      state.currentPlaylist = result.playlist.name;
+      $("#playlist-create-name").value = "";
+      setPlaylistCreateOpen(false);
+      await loadPlaylists(true);
+      toast(`已建立 ${result.playlist.name}`);
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
 }
 
 async function deletePlaylist() {
@@ -802,23 +887,82 @@ async function deletePlaylist() {
   if (!playlist || playlist.deletable !== true) return;
   if (!window.confirm(`確定刪除播放清單「${playlist.name}」？這會移除 ${playlist.tracks.length} 首歌曲。`)) return;
 
-  const button = $("#playlist-delete");
-  button.disabled = true;
-  button.textContent = "刪除中";
-  try {
-    await api(`/api/playlists/${encodeURIComponent(playlist.name)}`, { method: "DELETE" });
-    state.playlists = state.playlists.filter(item => item.name !== playlist.name);
-    delete state.playlistTitleLoads[playlist.name];
-    delete state.playlistVisibleCounts[playlist.name];
-    state.currentPlaylist = "";
-    renderPlaylists();
-    toast(`已刪除 ${playlist.name}`);
-  } catch (error) {
-    toast(error.message, "error");
-  } finally {
-    button.disabled = false;
-    button.textContent = "刪除清單";
+  return runMutation(async () => {
+    try {
+      await api(`/api/playlists/${encodeURIComponent(playlist.name)}`, { method: "DELETE" });
+      state.playlists = state.playlists.filter(item => item.name !== playlist.name);
+      delete state.playlistTitleLoads[playlist.name];
+      delete state.playlistVisibleCounts[playlist.name];
+      state.currentPlaylist = "";
+      renderPlaylists();
+      toast(`已刪除 ${playlist.name}`);
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
+}
+
+async function setPlayerVolume(volume) {
+  if (!state.guildId) return;
+  return runMutation(async () => {
+    try {
+      await api("/api/player/volume", { method: "POST", body: { guild_id: state.guildId, volume } });
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
+}
+
+async function addTrackToQueue(query) {
+  if (!query || !state.guildId) return;
+  return runMutation(async () => {
+    try {
+      const result = await api("/api/queue/add", { method: "POST", body: { guild_id: state.guildId, query } });
+      $("#track-query").value = "";
+      renderQueue(result.queue);
+      toast(`已加入 ${result.entry.title}`);
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
+}
+
+async function queuePlaylistTracks() {
+  const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
+  if (!state.guildId) {
+    toast("請先選擇 Discord 伺服器", "error");
+    return;
   }
+  if (!playlist || playlist.tracks.length === 0) return;
+  return runMutation(async () => {
+    try {
+      const result = await api(`/api/playlists/${encodeURIComponent(playlist.name)}/queue`, {
+        method: "POST",
+        body: { guild_id: state.guildId },
+      });
+      renderQueue(result.queue);
+      toast(`已加入 ${result.added_count} 首歌曲`);
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
+}
+
+async function addTrackToPlaylist(track) {
+  if (!track || !state.currentPlaylist) return;
+  return runMutation(async () => {
+    try {
+      const result = await api("/api/playlists", { method: "POST", body: { action: "add", name: state.currentPlaylist, track } });
+      const target = state.playlists.find(item => item.name === state.currentPlaylist);
+      if (target) target.tracks = result.playlist.tracks;
+      $("#playlist-track").value = "";
+      renderPlaylists();
+      void loadPlaylistTitles(state.currentPlaylist);
+      toast("已加入播放清單");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
 }
 
 function permissionControl(group, option, row) {
@@ -933,18 +1077,14 @@ document.addEventListener("DOMContentLoaded", () => {
     renderPlayer(state.player);
   });
   $("#volume-range").addEventListener("input", event => { $("#volume-output").value = `${event.target.value}%`; });
-  $("#volume-range").addEventListener("change", async event => {
-    try { await api("/api/player/volume", { method: "POST", body: { guild_id: state.guildId, volume: Number(event.target.value) / 100 } }); }
-    catch (error) { toast(error.message, "error"); }
+  $("#volume-range").addEventListener("change", event => { void setPlayerVolume(Number(event.target.value) / 100); });
+  $("#add-track-form").addEventListener("submit", event => {
+    event.preventDefault();
+    void addTrackToQueue($("#track-query").value.trim());
   });
-  $("#add-track-form").addEventListener("submit", async event => {
-    event.preventDefault(); const input = $("#track-query"); const query = input.value.trim(); if (!query) return;
-    const button = $("button", event.currentTarget); button.disabled = true; button.textContent = "處理中";
-    try { const result = await api("/api/queue/add", { method: "POST", body: { guild_id: state.guildId, query } }); input.value = ""; renderQueue(result.queue); toast(`已加入 ${result.entry.title}`); }
-    catch (error) { toast(error.message, "error"); }
-    finally { button.disabled = false; button.textContent = "加入"; }
-  });
-  $("#new-playlist").addEventListener("click", createPlaylist);
+  $("#new-playlist").addEventListener("click", () => setPlaylistCreateOpen(!state.playlistCreateOpen));
+  $("#playlist-create-form").addEventListener("submit", createPlaylist);
+  $("#playlist-create-cancel").addEventListener("click", () => setPlaylistCreateOpen(false));
   $("#queue-select-all").addEventListener("change", event => {
     const queue = state.player?.queue || [];
     if (event.currentTarget.checked) queue.forEach((_entry, index) => state.selectedQueueIndexes.add(index));
@@ -957,53 +1097,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#queue-playlist-cancel").addEventListener("click", closeQueuePlaylistDialog);
   $("#queue-playlist-form").addEventListener("submit", submitQueuePlaylistDialog);
   $("#playlist-delete").addEventListener("click", deletePlaylist);
-  $("#playlist-queue-all").addEventListener("click", async event => {
-    const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
-    if (!state.guildId) {
-      toast("請先選擇 Discord 伺服器", "error");
-      return;
-    }
-    if (!playlist || playlist.tracks.length === 0) return;
-
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.textContent = `加入 ${playlist.tracks.length} 首中`;
-    try {
-      const result = await api(`/api/playlists/${encodeURIComponent(playlist.name)}/queue`, {
-        method: "POST",
-        body: { guild_id: state.guildId },
-      });
-      renderQueue(result.queue);
-      toast(`已加入 ${result.added_count} 首歌曲`);
-    } catch (error) {
-      toast(error.message, "error");
-    } finally {
-      button.disabled = false;
-      button.textContent = "全部加入隊列";
-    }
-  });
-  $("#playlist-add-form").addEventListener("submit", async event => {
+  $("#playlist-queue-all").addEventListener("click", () => { void queuePlaylistTracks(); });
+  $("#playlist-add-form").addEventListener("submit", event => {
     event.preventDefault();
-    const input = $("#playlist-track");
-    const track = input.value.trim();
-    if (!track || !state.currentPlaylist) return;
-    const button = $("button", event.currentTarget);
-    button.disabled = true;
-    button.textContent = "加入中";
-    try {
-      const result = await api("/api/playlists", { method: "POST", body: { action: "add", name: state.currentPlaylist, track } });
-      const target = state.playlists.find(item => item.name === state.currentPlaylist);
-      if (target) target.tracks = result.playlist.tracks;
-      input.value = "";
-      renderPlaylists();
-      void loadPlaylistTitles(state.currentPlaylist);
-      toast("已加入播放清單");
-    } catch (error) {
-      toast(error.message, "error");
-    } finally {
-      button.disabled = false;
-      button.textContent = "加入";
-    }
+    void addTrackToPlaylist($("#playlist-track").value.trim());
   });
   $("#settings-search").addEventListener("input", () => renderSettings(state.settings));
   $("#reload-config").addEventListener("click", async () => { try { await api("/api/config/reload", { method: "POST" }); await loadSettings(true); toast("設定已重新載入"); } catch (error) { toast(error.message, "error"); } });
