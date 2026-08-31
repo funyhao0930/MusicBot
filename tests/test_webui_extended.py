@@ -313,7 +313,11 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get("/")
         self.assertEqual(response.status, 200)
         html = await response.text()
-        self.assertIn("MusicBot 控制中心", html)
+        self.assertIn("糖音機 控制中心", html)
+        self.assertIn("<strong>糖音機</strong>", html)
+        self.assertIn("糖音機 會依序播放", html)
+        self.assertIn('aria-label="糖音機 日誌"', html)
+        self.assertIn("控制台暫時失去 糖音機 回應", html)
         self.assertIn("正在播放", html)
         self.assertIn('id="new-playlist"', html)
         self.assertIn('id="permission-add-group"', html)
@@ -323,8 +327,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('data-action="repeat_song"', html)
         self.assertIn("關閉循環", html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=6', html)
-        self.assertIn('/assets/app.js?v=10', html)
+        self.assertIn('/assets/styles.css?v=7', html)
+        self.assertIn('/assets/app.js?v=11', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -337,6 +341,7 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("@keyframes control-pop", css)
         self.assertIn("@keyframes saved-flash", css)
         self.assertIn("@keyframes toast-in", css)
+        self.assertIn("@keyframes title-loading-pulse", css)
 
         response = await self.client.get("/assets/app.js")
         self.assertEqual(response.status, 200)
@@ -353,6 +358,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(r'"off": "\u95dc\u9589\u5faa\u74b0"', javascript)
         self.assertIn('repeat.dataset.action = nextAction', javascript)
         self.assertIn('class="button ghost playlist-queue"', javascript)
+        self.assertIn("歌名載入中…", javascript)
+        self.assertIn("playlist-track-title-loading", javascript)
 
     async def test_volume_control_is_grouped_with_transport_controls(self):
         class _TransportVolumeParser(HTMLParser):
@@ -730,13 +737,14 @@ vm.runInContext(`
         }],
       };
     }
-    if (path === "/api/playlists/default/titles") {
+    if (path.startsWith("/api/playlists/default/titles/")) {
       titleCalls += 1;
+      const index = Number(path.split("/").at(-1));
       return {
-        tracks: Array.from({ length: 2530 }, (_, index) => ({
+        track: {
           source: "track-" + index,
           title: "Title " + index,
-        })),
+        },
       };
     }
     throw new Error("unexpected API path: " + path);
@@ -760,13 +768,18 @@ Object.defineProperty(context, "titleCalls", {
   if (playlistCalls !== 1) {
     throw new Error(`expected one playlist API call, got ${playlistCalls}`);
   }
-  if (titleCalls !== 1) {
-    throw new Error(`expected one title API call, got ${titleCalls}`);
+  if (titleCalls !== 100) {
+    throw new Error(`expected one title API call per visible track, got ${titleCalls}`);
+  }
+  await Promise.resolve();
+  await Promise.resolve();
+  if (elements.get("#playlist-tracks").children[0].querySelector("strong").textContent !== "Title 0") {
+    throw new Error("completed title did not update its playlist row");
   }
 
   await vm.runInContext("loadPlaylists()", context);
   if (playlistCalls !== 1) throw new Error("cached playlist data was fetched again");
-  if (titleCalls !== 1) throw new Error("cached playlist titles were fetched again");
+  if (titleCalls !== 100) throw new Error("cached playlist titles were fetched again");
 
   const loadMore = elements.get("#playlist-tracks").children.at(-1);
   if (!loadMore || !loadMore.listeners.click) {
@@ -776,6 +789,9 @@ Object.defineProperty(context, "titleCalls", {
   const secondCount = elements.get("#playlist-tracks").children.length;
   if (secondCount <= firstCount || secondCount > 201) {
     throw new Error(`load-more rendered an unexpected node count: ${secondCount}`);
+  }
+  if (titleCalls !== 200) {
+    throw new Error(`load-more did not start title loading, got ${titleCalls} calls`);
   }
 })().catch(error => {
   console.error(error);
@@ -872,7 +888,7 @@ vm.runInContext(`
         ],
       };
     }
-    if (path === "/api/playlists/%E8%A5%BF%E5%91%B1%E6%AD%8C%E5%96%AE/titles") {
+    if (path === "/api/playlists/%E8%A5%BF%E5%91%B1%E6%AD%8C%E5%96%AE/titles/0") {
       return new Promise(() => {});
     }
     throw new Error("unexpected API path: " + path);
@@ -891,7 +907,10 @@ Object.defineProperty(context, "calls", { get() { return calls; } });
   if (elements.get("#playlist-tracks").children.length !== 1) {
     throw new Error("playlist source was not rendered immediately");
   }
-  if (!calls.includes("/api/playlists/%E8%A5%BF%E5%91%B1%E6%AD%8C%E5%96%AE/titles")) {
+  if (elements.get("#playlist-tracks").children[0].querySelector("strong").textContent !== "歌名載入中…") {
+    throw new Error("playlist row did not show the title loading state");
+  }
+  if (!calls.includes("/api/playlists/%E8%A5%BF%E5%91%B1%E6%AD%8C%E5%96%AE/titles/0")) {
     throw new Error("background title loading did not start");
   }
 })().catch(error => {
@@ -1476,6 +1495,34 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
             payload["tracks"],
             [{"source": source, "title": source}],
         )
+
+    async def test_single_playlist_title_resolves_and_uses_cache(self):
+        response = await self.client.get("/api/playlists/default/titles/0")
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(
+            payload["track"],
+            {"source": "track one", "title": "Result for track one"},
+        )
+        self.assertEqual(self.bot.downloader.calls, ["track one"])
+
+        response = await self.client.get("/api/playlists/default/titles/0")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.bot.downloader.calls, ["track one"])
+
+    async def test_single_playlist_title_rejects_invalid_index(self):
+        response = await self.client.get("/api/playlists/default/titles/1")
+        self.assertEqual(response.status, 400)
+
+    async def test_single_playlist_title_falls_back_to_source_when_lookup_fails(self):
+        source = "https://example.test/unavailable-single"
+        self.bot.playlist_mgr.playlists["default"].data = [source]
+        self.bot.downloader.fail_queries.add(source)
+
+        response = await self.client.get("/api/playlists/default/titles/0")
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["track"], {"source": source, "title": source})
 
     async def test_playlist_name_rejects_path_traversal(self):
         response = await self.client.post(

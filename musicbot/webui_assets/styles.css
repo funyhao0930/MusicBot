@@ -180,6 +180,8 @@ input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92
 .playlist-track-copy { min-width: 0; display: grid; gap: 3px; }
 .playlist-track-copy strong, .playlist-track-copy small { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .playlist-track-copy strong { color: var(--text); font: 600 14px/1.4 "Segoe UI Variable Text", sans-serif; }
+.playlist-track-copy strong.playlist-track-title-loading { color: var(--muted); animation: title-loading-pulse 1.2s ease-in-out infinite; }
+@keyframes title-loading-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
 .playlist-track-copy small { color: var(--muted); font: 11px/1.4 "Cascadia Code", Consolas, monospace; }
 .playlist-track-actions { display: flex; align-items: center; gap: 8px; }
 .playlist-track-actions .button { padding: 7px 10px; font-size: 11px; }

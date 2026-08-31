@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>MusicBot 控制中心</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=6">
+  <title>糖音機 控制中心</title>
+  <link rel="stylesheet" href="/assets/styles.css?v=7">
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -16,7 +16,7 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
         <div>
-          <strong>MusicBot</strong>
+          <strong>糖音機</strong>
           <small>本機控制中心</small>
         </div>
       </div>
@@ -136,7 +136,7 @@
               <button class="button primary" type="submit">加入</button>
             </form>
             <div class="playlist-tracks" id="playlist-tracks"></div>
-            <div class="empty-state" id="playlist-empty"><strong>這張清單還沒有歌</strong><p>加入連結或搜尋詞，MusicBot 會依序播放。</p></div>
+            <div class="empty-state" id="playlist-empty"><strong>這張清單還沒有歌</strong><p>加入連結或搜尋詞，糖音機 會依序播放。</p></div>
           </section>
         </div>
       </section>
@@ -178,16 +178,16 @@
           <input id="log-search" type="search" placeholder="搜尋日誌">
           <label class="toggle-row"><input id="log-auto-scroll" type="checkbox" checked><span>自動捲動</span></label>
         </div>
-        <pre class="log-view" id="log-view" tabindex="0" aria-label="MusicBot 日誌"></pre>
+        <pre class="log-view" id="log-view" tabindex="0" aria-label="糖音機 日誌"></pre>
       </section>
     </main>
   </div>
 
   <div class="toast-region" id="toast-region" aria-live="polite"></div>
   <div class="reconnect-layer" id="reconnect-layer" hidden>
-    <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 MusicBot 回應。</p></div>
+    <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=10" defer></script>
+  <script src="/assets/app.js?v=11" defer></script>
 </body>
 </html>

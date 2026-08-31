@@ -426,6 +426,22 @@ function renderLogs() {
   if ($("#log-auto-scroll").checked) view.scrollTop = view.scrollHeight;
 }
 
+function playlistTrackSource(track) {
+  return typeof track === "string" ? track : (track?.source || "");
+}
+
+function playlistTrackTitle(track) {
+  const source = playlistTrackSource(track);
+  return typeof track === "string" ? source : (track?.title || source);
+}
+
+function playlistTitleLoadStates(name) {
+  if (!state.playlistTitleLoads[name] || typeof state.playlistTitleLoads[name] !== "object") {
+    state.playlistTitleLoads[name] = {};
+  }
+  return state.playlistTitleLoads[name];
+}
+
 function renderPlaylistEditor() {
   const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
   const tracks = playlist?.tracks || [];
@@ -441,12 +457,14 @@ function renderPlaylistEditor() {
     : 0;
   const visibleTracks = tracks.slice(0, visibleCount);
   const rows = visibleTracks.map((track, index) => {
-    const source = typeof track === "string" ? track : (track?.source || "");
-    const title = typeof track === "string" ? track : (track?.title || source);
+    const source = playlistTrackSource(track);
+    const titleState = playlistTitleLoadStates(playlist.name)[source];
+    const title = titleState === "loading" ? "歌名載入中…" : playlistTrackTitle(track);
     const row = document.createElement("div");
     row.className = "playlist-track";
     row.innerHTML = `<span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="playlist-track-copy"><strong></strong><small></small></div><div class="playlist-track-actions"><button class="button ghost playlist-queue" type="button">加入隊列</button><button class="queue-remove" type="button">移除</button></div>`;
     $("strong", row).textContent = title;
+    $("strong", row).classList.toggle("playlist-track-title-loading", titleState === "loading");
     $("small", row).textContent = source;
     const queueButton = $(".playlist-queue", row);
     queueButton.addEventListener("click", async () => {
@@ -493,6 +511,7 @@ function renderPlaylistEditor() {
     loadMore.addEventListener("click", () => {
       state.playlistVisibleCounts[playlist.name] = visibleCount + PLAYLIST_BATCH_SIZE;
       renderPlaylistEditor();
+      void loadPlaylistTitles(playlist.name);
     });
     rows.push(loadMore);
   }
@@ -524,17 +543,47 @@ function renderPlaylists() {
 }
 
 async function loadPlaylistTitles(name) {
-  if (!name || state.playlistTitleLoads[name]) return;
-  state.playlistTitleLoads[name] = "loading";
+  if (!name) return;
+  const playlist = state.playlists.find(item => item.name === name);
+  if (!playlist) return;
+
+  const loads = playlistTitleLoadStates(name);
+  const visibleCount = state.playlistVisibleCounts[name] || PLAYLIST_BATCH_SIZE;
+  const pending = [];
+  playlist.tracks.slice(0, visibleCount).forEach((track, index) => {
+    const source = playlistTrackSource(track);
+    if (!source || loads[source]) return;
+    if (playlistTrackTitle(track) !== source) {
+      loads[source] = "loaded";
+      return;
+    }
+    loads[source] = "loading";
+    pending.push(loadPlaylistTrackTitle(name, index, source));
+  });
+  if (!pending.length) return;
+  if (state.currentPlaylist === name) renderPlaylistEditor();
+
+  const results = await Promise.all(pending);
+  const failures = results.filter(result => !result).length;
+  if (failures) toast(`${failures} 首歌曲的歌名載入失敗`, "error");
+}
+
+async function loadPlaylistTrackTitle(name, index, source) {
   try {
-    const result = await api(`/api/playlists/${encodeURIComponent(name)}/titles`);
+    const result = await api(`/api/playlists/${encodeURIComponent(name)}/titles/${index}`);
     const target = state.playlists.find(item => item.name === name);
-    if (target) target.tracks = result.tracks;
-    state.playlistTitleLoads[name] = "loaded";
+    if (target && result.track) {
+      target.tracks = target.tracks.map(track => (
+        playlistTrackSource(track) === source ? result.track : track
+      ));
+    }
+    playlistTitleLoadStates(name)[source] = "loaded";
     if (state.currentPlaylist === name) renderPlaylistEditor();
-  } catch (error) {
-    delete state.playlistTitleLoads[name];
-    toast(error.message, "error");
+    return true;
+  } catch {
+    playlistTitleLoadStates(name)[source] = "error";
+    if (state.currentPlaylist === name) renderPlaylistEditor();
+    return false;
   }
 }
 
@@ -655,7 +704,7 @@ async function requestRestart(mode) {
   if (!window.confirm(`確定執行${label}？播放與 Discord 連線會暫時中斷。`)) return;
   const layer = $("#reconnect-layer");
   $("strong", layer).textContent = `正在執行${label}`;
-  $("p", layer).textContent = "關閉連線後，控制台會自動等待 MusicBot 回來。";
+  $("p", layer).textContent = "關閉連線後，控制台會自動等待 糖音機 回來。";
   layer.hidden = false;
   try {
     await api("/api/restart", { method: "POST", body: { mode } });
@@ -731,6 +780,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target) target.tracks = result.playlist.tracks;
       input.value = "";
       renderPlaylists();
+      void loadPlaylistTitles(state.currentPlaylist);
       toast("已加入播放清單");
     } catch (error) {
       toast(error.message, "error");

@@ -53,6 +53,10 @@ def public_api_routes(controller: Any) -> list[Any]:
             "/api/playlists/{name}/titles",
             controller._handle_playlist_titles,
         ),
+        web.get(
+            "/api/playlists/{name}/titles/{index}",
+            controller._handle_playlist_title,
+        ),
         web.post("/api/playlists", controller._handle_playlists_post),
         web.delete(
             "/api/playlists/{name}/{index}",
@@ -829,6 +833,23 @@ class MusicBotWebUI:
             return self._error(str(exc), status=400)
 
         return web.json_response({"ok": True, "name": name, "tracks": tracks})
+
+    async def _handle_playlist_title(self, request: web.Request) -> web.Response:
+        try:
+            name = self._playlist_name(request.match_info["name"])
+            index = int(request.match_info["index"])
+            playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
+            await playlist.load()
+            sources = self._playlist_sources(playlist)
+            if not 0 <= index < len(sources):
+                raise ValueError("Playlist track index is outside the playlist")
+            track = await self._playlist_track_payload(sources[index])
+        except (OSError, ValueError) as exc:
+            return self._error(str(exc), status=400)
+
+        return web.json_response(
+            {"ok": True, "name": name, "index": index, "track": track}
+        )
 
     async def _handle_playlists_post(self, request: web.Request) -> web.Response:
         try:

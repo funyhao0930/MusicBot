@@ -189,6 +189,7 @@ class PublicWebUIAPITests(unittest.IsolatedAsyncioTestCase):
                 ("DELETE", "/api/queue/{index}"),
                 ("GET", "/api/playlists"),
                 ("GET", "/api/playlists/{name}/titles"),
+                ("GET", "/api/playlists/{name}/titles/{index}"),
                 ("POST", "/api/playlists"),
                 ("DELETE", "/api/playlists/{name}/{index}"),
                 ("POST", "/api/playlists/{name}/queue"),
