@@ -434,6 +434,8 @@ function renderPlaylistEditor() {
   $("#playlist-empty").hidden = tracks.length > 0;
   $("#playlist-add-form").querySelectorAll("input, button").forEach(control => { control.disabled = !playlist; });
   $("#playlist-queue-all").disabled = !playlist || tracks.length === 0;
+  $("#playlist-delete").hidden = !playlist || playlist.deletable !== true;
+  $("#playlist-delete").disabled = !playlist || playlist.deletable !== true;
 
   const root = $("#playlist-tracks");
   const visibleCount = playlist
@@ -568,6 +570,30 @@ async function createPlaylist() {
   }
 }
 
+async function deletePlaylist() {
+  const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
+  if (!playlist || playlist.deletable !== true) return;
+  if (!window.confirm(`確定刪除播放清單「${playlist.name}」？這會移除 ${playlist.tracks.length} 首歌曲。`)) return;
+
+  const button = $("#playlist-delete");
+  button.disabled = true;
+  button.textContent = "刪除中";
+  try {
+    await api(`/api/playlists/${encodeURIComponent(playlist.name)}`, { method: "DELETE" });
+    state.playlists = state.playlists.filter(item => item.name !== playlist.name);
+    delete state.playlistTitleLoads[playlist.name];
+    delete state.playlistVisibleCounts[playlist.name];
+    state.currentPlaylist = "";
+    renderPlaylists();
+    toast(`已刪除 ${playlist.name}`);
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "刪除清單";
+  }
+}
+
 function permissionControl(group, option, row) {
   const control = $(".setting-control", row);
   const input = settingInput(option);
@@ -692,6 +718,7 @@ document.addEventListener("DOMContentLoaded", () => {
     finally { button.disabled = false; button.textContent = "加入"; }
   });
   $("#new-playlist").addEventListener("click", createPlaylist);
+  $("#playlist-delete").addEventListener("click", deletePlaylist);
   $("#playlist-queue-all").addEventListener("click", async event => {
     const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
     if (!state.guildId) {

@@ -347,3 +347,26 @@ class AutoPlaylistManager:
         """Check for the existence of the given playlist file."""
         # using pathlib .name prevents directory traversal attack.
         return self._apl_dir.joinpath(pathlib.Path(filename).name).is_file()
+
+    def is_protected_playlist(self, filename: str) -> bool:
+        """Return whether a playlist file is managed by MusicBot."""
+        playlist_file = self._apl_dir.joinpath(pathlib.Path(filename).name)
+        protected_names = {
+            self._apl_file_default.stem.casefold(),
+            self._apl_file_history.stem.casefold(),
+            self._apl_file_usercopy.stem.casefold(),
+        }
+        return playlist_file.stem.casefold() in protected_names
+
+    def delete_playlist(self, filename: str) -> None:
+        """Delete a custom playlist file and forget its cached instance."""
+        playlist_file = self._apl_dir.joinpath(pathlib.Path(filename).name)
+        if self.is_protected_playlist(filename):
+            raise PermissionError("System playlists are protected")
+        if not playlist_file.is_file():
+            raise LookupError("Playlist does not exist")
+
+        playlist_file.unlink()
+        for name in list(self._playlists):
+            if name.casefold() == playlist_file.stem.casefold():
+                self._playlists.pop(name, None)
