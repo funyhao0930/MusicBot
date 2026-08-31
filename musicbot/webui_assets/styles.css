@@ -161,8 +161,13 @@ input[type="range"]:not(:disabled) { cursor: pointer; }
 .add-track { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 22px 0 18px; }
 input[type="text"], input[type="search"] { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; color: var(--text); background: rgba(255,255,255,.04); transition: border-color var(--motion-ui), background var(--motion-ui), box-shadow var(--motion-ui); }
 input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92,246,.6); background: rgba(139,92,246,.06); box-shadow: 0 0 0 4px rgba(139,92,246,.08); }
+.queue-bulk-actions { display: flex; align-items: center; gap: 10px; min-height: 38px; margin: 0 0 12px; padding: 7px 9px; border: 1px solid rgba(139,92,246,.18); border-radius: 12px; background: rgba(139,92,246,.05); }
+.queue-select-all-label { display: inline-flex; align-items: center; gap: 7px; color: var(--text); font-size: 12px; cursor: pointer; }
+.queue-select-all-label input, .queue-select-input { width: 16px; height: 16px; accent-color: var(--violet); cursor: pointer; }
+.queue-selected-count { flex: 1; color: var(--muted); font-size: 11px; }
+.queue-bulk-actions .button { padding: 7px 10px; font-size: 11px; }
 .queue-list { min-height: 0; overflow-x: hidden; overflow-y: auto; display: grid; align-content: start; }
-.queue-item { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 13px 6px; border-bottom: 1px solid var(--line); animation: queue-in var(--motion-page) var(--ease-out) both; transition: opacity var(--motion-ui), transform var(--motion-ui), background var(--motion-ui), max-height var(--motion-ui), padding var(--motion-ui); }
+.queue-item { display: grid; grid-template-columns: 22px 38px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 13px 6px; border-bottom: 1px solid var(--line); animation: queue-in var(--motion-page) var(--ease-out) both; transition: opacity var(--motion-ui), transform var(--motion-ui), background var(--motion-ui), max-height var(--motion-ui), padding var(--motion-ui); }
 @keyframes queue-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
 .queue-item.is-removing { opacity: 0; transform: translateX(22px); max-height: 0; padding-block: 0; overflow: hidden; }
 .queue-item.is-dragging { opacity: .75; transform: scale(1.02); background: rgba(139,92,246,.12); border-radius: 12px; }
@@ -211,6 +216,18 @@ input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92
 .group-actions { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
 .group-actions .button { padding: 7px 10px; font-size: 11px; }
 
+.playlist-dialog { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid rgba(139,92,246,.3); border-radius: 22px; color: var(--text); background: var(--ink-1); box-shadow: 0 28px 90px rgba(0,0,0,.58); }
+.playlist-dialog::backdrop { background: rgba(5,6,11,.72); backdrop-filter: blur(8px); }
+.playlist-dialog[open] { animation: dialog-in var(--motion-page) var(--ease-out) both; }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.playlist-dialog form { display: grid; gap: 20px; padding: 28px; }
+.playlist-dialog-heading h2 { margin: 2px 0 6px; font-size: 24px; letter-spacing: -.03em; }
+.playlist-dialog-heading > p:last-child { margin: 0; color: var(--muted); font-size: 12px; }
+.dialog-field { display: grid; gap: 8px; color: var(--muted); font-size: 12px; }
+.dialog-field select, .dialog-field input { width: 100%; }
+.playlist-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.playlist-dialog-actions .button { min-width: 100px; }
+
 .log-toolbar input { max-width: 380px; }.log-view { min-height: calc(100vh - 250px); margin: 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-md); background: #070810; color: #c9cad7; overflow: auto; font: 12px/1.7 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; }
 .log-line { animation: log-in var(--motion-fast) ease both; } @keyframes log-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -239,11 +256,12 @@ input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92
   .setting-row { grid-template-columns: 1fr; gap: 12px; }
   .content-header { align-items: flex-start; }.header-actions { justify-content: flex-start; }
   .playlist-workbench { grid-template-columns: 1fr; }.playlist-tabs { border-right: 0; border-bottom: 1px solid var(--line); display: flex; overflow-x: auto; }.playlist-tab { flex: none; }.playlist-editor { padding: 18px; }
+  .queue-bulk-actions { align-items: flex-start; flex-wrap: wrap; }.queue-selected-count { flex-basis: 100%; order: 3; }.queue-bulk-actions .button { margin-left: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
-  .page, .album-art, .queue-item, .nav-item, .button { transform: none !important; }
+  .page, .album-art, .queue-item, .nav-item, .button, .playlist-dialog { transform: none !important; }
   .track-title-viewport.is-overflowing { -webkit-mask-image: none; mask-image: none; }
   .track-title-viewport.is-overflowing h2 { width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: center; animation: none !important; transform: none !important; }
 }

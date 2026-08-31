@@ -58,6 +58,10 @@ def public_api_routes(controller: Any) -> list[Any]:
             "/api/playlists/{name}/queue",
             controller._handle_playlist_queue_add,
         ),
+        web.post(
+            "/api/playlists/{name}/tracks",
+            controller._handle_playlist_tracks_add,
+        ),
         web.get(
             "/api/playlists/{name}/titles",
             controller._handle_playlist_titles,
@@ -851,6 +855,53 @@ class MusicBotWebUI:
                 "ok": True,
                 "added_count": len(entries),
                 "queue": [entry_to_payload(e) for e in player.playlist.entries],
+            }
+        )
+
+    async def _handle_playlist_tracks_add(
+        self, request: web.Request
+    ) -> web.Response:
+        try:
+            body = await self._json_body(request)
+            name = self._playlist_name(request.match_info["name"])
+            tracks = body.get("tracks")
+            if not isinstance(tracks, list) or not tracks:
+                raise ValueError("tracks must be a non-empty list")
+
+            playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
+            playlist.create_file()
+            await playlist.load(force=True)
+
+            existing = set(self._playlist_sources(playlist))
+            added_count = 0
+            skipped_count = 0
+            for raw_track in tracks:
+                if not isinstance(raw_track, str):
+                    raise ValueError("Each playlist track must be a string")
+                track = raw_track.strip()
+                if not track:
+                    raise ValueError("Playlist tracks cannot be empty")
+                if len(track) > 2048:
+                    raise ValueError("The playlist track is too long")
+                if track in existing:
+                    skipped_count += 1
+                    continue
+                await playlist.add_track(track)
+                existing.add(track)
+                added_count += 1
+        except (OSError, TypeError, ValueError) as exc:
+            return self._error(str(exc), status=400)
+        except LookupError as exc:
+            return self._error(str(exc), status=404)
+        except Exception as exc:
+            return self._error(f"Unable to add selected tracks: {exc}", status=502)
+
+        return web.json_response(
+            {
+                "ok": True,
+                "added_count": added_count,
+                "skipped_count": skipped_count,
+                "playlist": await self._playlist_payload(name),
             }
         )
 

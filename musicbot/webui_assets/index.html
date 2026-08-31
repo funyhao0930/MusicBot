@@ -121,6 +121,15 @@
               <button class="button primary" type="submit">加入</button>
             </form>
 
+            <div class="queue-bulk-actions" id="queue-bulk-actions">
+              <label class="queue-select-all-label">
+                <input id="queue-select-all" type="checkbox" disabled>
+                <span>全選</span>
+              </label>
+              <span class="queue-selected-count" id="queue-selected-count">未選取歌曲</span>
+              <button class="button ghost" id="queue-add-to-playlist" type="button" disabled>加入播放清單</button>
+            </div>
+
             <div class="queue-list" id="queue-list" aria-live="polite"></div>
             <div class="empty-state" id="queue-empty">
               <strong>佇列還是空的</strong>
@@ -199,10 +208,31 @@
   </div>
 
   <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  <dialog class="playlist-dialog" id="queue-playlist-dialog" aria-labelledby="queue-playlist-dialog-title">
+    <form id="queue-playlist-form" method="dialog">
+      <div class="playlist-dialog-heading">
+        <p class="section-kicker">SAVE SELECTION</p>
+        <h2 id="queue-playlist-dialog-title">加入播放清單</h2>
+        <p id="queue-playlist-dialog-count">已選取 0 首歌曲</p>
+      </div>
+      <label class="dialog-field" for="queue-playlist-target">
+        <span>目的地</span>
+        <select id="queue-playlist-target"></select>
+      </label>
+      <label class="dialog-field" id="queue-new-playlist-field" for="queue-new-playlist-name" hidden>
+        <span>新清單名稱</span>
+        <input id="queue-new-playlist-name" type="text" maxlength="80" autocomplete="off" placeholder="例如：週五夜晚">
+      </label>
+      <div class="playlist-dialog-actions">
+        <button class="button ghost" id="queue-playlist-cancel" type="button">取消</button>
+        <button class="button primary" id="queue-playlist-submit" type="submit">加入播放清單</button>
+      </div>
+    </form>
+  </dialog>
   <div class="reconnect-layer" id="reconnect-layer" hidden>
     <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=12" defer></script>
+  <script src="/assets/app.js?v=13" defer></script>
 </body>
 </html>

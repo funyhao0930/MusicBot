@@ -341,6 +341,9 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="transport-repeat"', html)
         self.assertIn('id="transport-stop"', html)
         self.assertIn('id="queue-clear"', html)
+        self.assertIn('id="queue-select-all"', html)
+        self.assertIn('id="queue-add-to-playlist"', html)
+        self.assertIn('id="queue-playlist-dialog"', html)
         self.assertIn('data-action="previous"', html)
         self.assertIn('aria-label="上一首"', html)
         self.assertIn('id="playlist-delete"', html)
@@ -348,7 +351,7 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('/assets/icon-repeat.svg', html)
         self.assertIn('aria-pressed="false"', html)
         self.assertIn('/assets/styles.css?v=8', html)
-        self.assertIn('/assets/app.js?v=12', html)
+        self.assertIn('/assets/app.js?v=13', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -382,6 +385,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('repeat.dataset.action = nextAction', javascript)
         self.assertIn('previous.disabled = !player?.can_previous', javascript)
         self.assertIn('class="button ghost playlist-queue"', javascript)
+        self.assertIn('/api/playlists/${encodeURIComponent(name)}/tracks', javascript)
+        self.assertIn('queue-playlist-dialog', javascript)
         self.assertIn("歌名載入中…", javascript)
         self.assertIn("playlist-track-title-loading", javascript)
         self.assertIn('DELETE', javascript)
@@ -599,6 +604,64 @@ vm.runInContext(`renderQueue(${JSON.stringify(changedSnapshot)})`, context);
 if (list.replaceCount !== 2) {
   throw new Error("changed queue did not rebuild");
 }
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_frontend_submits_selected_queue_sources_and_clears_selection(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const calls = [];
+const document = {
+  addEventListener() {},
+  querySelector() { return { hidden: false, disabled: false, textContent: "", classList: { toggle() {} } }; },
+  querySelectorAll() { return []; },
+};
+const context = {
+  document,
+  window: { addEventListener() {}, confirm() { return false; }, prompt() { return null; } },
+  console,
+  fetch: async () => { throw new Error("unexpected fetch"); },
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout() {},
+  URLSearchParams,
+  encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+vm.runInContext(`
+  state.player = { queue: [
+    { url: "https://example.test/one" },
+    { url: "https://example.test/two" },
+  ] };
+  state.selectedQueueIndexes = new Set([1, 0]);
+  api = async (path, options) => { calls.push({ path, body: options.body }); return { ok: true }; };
+`, context);
+Object.defineProperty(context, "calls", { get() { return calls; } });
+
+(async () => {
+  await vm.runInContext("submitQueuePlaylistBatch('晚安歌單')", context);
+  if (calls.length !== 1) throw new Error(`expected one API call, got ${calls.length}`);
+  if (calls[0].path !== "/api/playlists/%E6%99%9A%E5%AE%89%E6%AD%8C%E5%96%AE/tracks") {
+    throw new Error("selected queue request used the wrong endpoint");
+  }
+  if (JSON.stringify(calls[0].body.tracks) !== JSON.stringify([
+    "https://example.test/one", "https://example.test/two"
+  ])) throw new Error("selected queue sources lost queue order");
+  if (vm.runInContext("state.selectedQueueIndexes.size", context) !== 0) {
+    throw new Error("successful batch did not clear selected queue items");
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
 """
         result = subprocess.run(
             ["node", "-e", harness, str(app_js)],
@@ -1461,6 +1524,82 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
 
         self.assertEqual(response.status, 400)
         self.assertEqual(self.bot.downloader.calls, [])
+
+    async def test_selected_queue_tracks_append_to_existing_playlist_in_order(self):
+        response = await self.client.post(
+            "/api/playlists/default/tracks",
+            json={"tracks": ["https://example.test/2", "https://example.test/3"]},
+            headers=self._headers(),
+        )
+
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["added_count"], 2)
+        self.assertEqual(payload["skipped_count"], 0)
+        self.assertEqual(
+            self.bot.playlist_mgr.playlists["default"].data,
+            [
+                "track one",
+                "https://example.test/2",
+                "https://example.test/3",
+            ],
+        )
+
+    async def test_selected_queue_tracks_can_create_new_playlist_and_append(self):
+        response = await self.client.post(
+            "/api/playlists/new-mix/tracks",
+            json={"tracks": ["first track", "second track"]},
+            headers=self._headers(),
+        )
+
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["playlist"]["name"], "new-mix")
+        self.assertEqual(payload["added_count"], 2)
+        self.assertEqual(self.bot.playlist_mgr.playlists["new-mix"].data, [
+            "first track",
+            "second track",
+        ])
+
+    async def test_selected_queue_tracks_skip_existing_and_batch_duplicates(self):
+        response = await self.client.post(
+            "/api/playlists/default/tracks",
+            json={
+                "tracks": [
+                    "track one",
+                    "track two",
+                    "track two",
+                    "track three",
+                ]
+            },
+            headers=self._headers(),
+        )
+
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["added_count"], 2)
+        self.assertEqual(payload["skipped_count"], 2)
+        self.assertEqual(
+            self.bot.playlist_mgr.playlists["default"].data,
+            ["track one", "track two", "track three"],
+        )
+
+    async def test_selected_queue_tracks_reject_invalid_batches(self):
+        cases = [
+            {},
+            {"tracks": []},
+            {"tracks": "not-a-list"},
+            {"tracks": [""]},
+            {"tracks": ["x" * 2049]},
+        ]
+        for body in cases:
+            with self.subTest(body=body):
+                response = await self.client.post(
+                    "/api/playlists/default/tracks",
+                    json=body,
+                    headers=self._headers(),
+                )
+                self.assertEqual(response.status, 400)
 
     async def test_permission_option_can_be_read_and_saved(self):
         response = await self.client.get("/api/permissions")

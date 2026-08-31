@@ -10,6 +10,7 @@ const state = {
   scrubbing: false,
   draggingIndex: null,
   queueRenderKey: null,
+  selectedQueueIndexes: new Set(),
   settings: [],
   playlists: [],
   playlistsLoaded: false,
@@ -281,12 +282,50 @@ function renderPlayer(player) {
   renderQueue(player?.queue || []);
 }
 
+function selectedQueueSources(queue) {
+  return [...state.selectedQueueIndexes]
+    .sort((left, right) => left - right)
+    .map(index => queue[index]?.url || "")
+    .filter(Boolean);
+}
+
+function syncQueueSelectionControls(queue) {
+  const validIndexes = new Set(queue.map((_entry, index) => index));
+  state.selectedQueueIndexes.forEach(index => {
+    if (!validIndexes.has(index)) state.selectedQueueIndexes.delete(index);
+  });
+  const selectedCount = state.selectedQueueIndexes.size;
+  const selectAll = $("#queue-select-all");
+  const selectedLabel = $("#queue-selected-count");
+  const addButton = $("#queue-add-to-playlist");
+  if (selectAll) {
+    selectAll.disabled = queue.length === 0;
+    selectAll.checked = queue.length > 0 && selectedCount === queue.length;
+    selectAll.indeterminate = selectedCount > 0 && selectedCount < queue.length;
+  }
+  const queueList = $("#queue-list");
+  if (queueList?.querySelectorAll) {
+    $$(".queue-select-input", queueList).forEach((checkbox, index) => {
+      checkbox.checked = state.selectedQueueIndexes.has(index);
+    });
+  }
+  if (selectedLabel) selectedLabel.textContent = selectedCount ? `已選取 ${selectedCount} 首歌曲` : "未選取歌曲";
+  if (addButton) addButton.disabled = selectedCount === 0;
+  $("#queue-playlist-dialog-count").textContent = `已選取 ${selectedCount} 首歌曲`;
+}
+
+function clearQueueSelection() {
+  state.selectedQueueIndexes.clear();
+  syncQueueSelectionControls(state.player?.queue || []);
+}
+
 function renderQueue(queue) {
   const list = $("#queue-list");
   $("#queue-count").textContent = `${queue.length} 首`;
   $("#queue-clear").disabled = queue.length === 0;
   $("#queue-empty").hidden = queue.length > 0;
   list.hidden = queue.length === 0;
+  syncQueueSelectionControls(queue);
 
   const renderKey = JSON.stringify(queue.map(entry => [
     entry.url || "",
@@ -294,7 +333,11 @@ function renderQueue(queue) {
     Number(entry.duration) || 0,
     entry.requested_by || "",
   ]));
-  if (renderKey === state.queueRenderKey) return;
+  if (renderKey === state.queueRenderKey) {
+    syncQueueSelectionControls(queue);
+    return;
+  }
+  state.selectedQueueIndexes.clear();
   state.queueRenderKey = renderKey;
 
   list.replaceChildren(...queue.map((entry, index) => {
@@ -302,7 +345,14 @@ function renderQueue(queue) {
     row.className = "queue-item";
     row.draggable = true;
     row.dataset.index = index;
-    row.innerHTML = `<span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="queue-copy"><strong></strong><small></small></div><button class="queue-remove" type="button" aria-label="從佇列移除">移除</button>`;
+    row.innerHTML = `<input class="queue-select-input" type="checkbox" aria-label="選取第 ${index + 1} 首歌曲"><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="queue-copy"><strong></strong><small></small></div><button class="queue-remove" type="button" aria-label="從佇列移除">移除</button>`;
+    const checkbox = $(".queue-select-input", row);
+    checkbox.checked = state.selectedQueueIndexes.has(index);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) state.selectedQueueIndexes.add(index);
+      else state.selectedQueueIndexes.delete(index);
+      syncQueueSelectionControls(queue);
+    });
     $("strong", row).textContent = entry.title;
     $("small", row).textContent = `${formatTime(entry.duration)} · ${entry.requested_by}`;
     $(".queue-remove", row).addEventListener("click", () => removeQueueItem(index, row));
@@ -316,6 +366,89 @@ function renderQueue(queue) {
     });
     return row;
   }));
+  syncQueueSelectionControls(queue);
+}
+
+async function submitQueuePlaylistBatch(name) {
+  const tracks = selectedQueueSources(state.player?.queue || []);
+  if (!tracks.length) throw new Error("請先選取至少一首歌曲");
+  const result = await api(`/api/playlists/${encodeURIComponent(name)}/tracks`, {
+    method: "POST",
+    body: { tracks },
+  });
+  clearQueueSelection();
+  return result;
+}
+
+function updateQueuePlaylistDialogMode() {
+  const target = $("#queue-playlist-target");
+  const newField = $("#queue-new-playlist-field");
+  const newInput = $("#queue-new-playlist-name");
+  const isNew = target.value === "__new__";
+  newField.hidden = !isNew;
+  newInput.disabled = !isNew;
+  if (isNew) newInput.focus();
+}
+
+async function openQueuePlaylistDialog() {
+  if (!state.selectedQueueIndexes.size) {
+    toast("請先選取至少一首歌曲", "error");
+    return;
+  }
+  await loadPlaylists();
+  const dialog = $("#queue-playlist-dialog");
+  const target = $("#queue-playlist-target");
+  target.replaceChildren(...state.playlists.map(playlist => {
+    const option = document.createElement("option");
+    option.value = playlist.name;
+    option.textContent = `${playlist.name} · ${playlist.tracks.length} 首`;
+    return option;
+  }));
+  const newOption = document.createElement("option");
+  newOption.value = "__new__";
+  newOption.textContent = "＋建立新清單";
+  target.append(newOption);
+  $("#queue-playlist-dialog-count").textContent = `已選取 ${state.selectedQueueIndexes.size} 首歌曲`;
+  $("#queue-new-playlist-name").value = "";
+  target.value = state.playlists.length ? state.playlists[0].name : "__new__";
+  updateQueuePlaylistDialogMode();
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.hidden = false;
+}
+
+function closeQueuePlaylistDialog() {
+  const dialog = $("#queue-playlist-dialog");
+  if (typeof dialog.close === "function") dialog.close();
+  else dialog.hidden = true;
+}
+
+async function submitQueuePlaylistDialog(event) {
+  event.preventDefault();
+  const target = $("#queue-playlist-target");
+  const name = target.value === "__new__" ? $("#queue-new-playlist-name").value.trim() : target.value;
+  if (!name) {
+    toast("請輸入新播放清單名稱", "error");
+    return;
+  }
+  const button = $("#queue-playlist-submit");
+  button.disabled = true;
+  button.textContent = "加入中";
+  try {
+    const result = await submitQueuePlaylistBatch(name);
+    const existing = state.playlists.find(playlist => playlist.name === result.playlist.name);
+    if (existing) Object.assign(existing, result.playlist);
+    else state.playlists.push(result.playlist);
+    state.playlistsLoaded = true;
+    renderPlaylists();
+    closeQueuePlaylistDialog();
+    const skipped = result.skipped_count || 0;
+    toast(skipped ? `已加入 ${result.added_count} 首，跳過 ${skipped} 首重複歌曲` : `已加入 ${result.added_count} 首歌曲`);
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "加入播放清單";
+  }
 }
 
 async function playerAction(action, button) {
@@ -812,6 +945,17 @@ document.addEventListener("DOMContentLoaded", () => {
     finally { button.disabled = false; button.textContent = "加入"; }
   });
   $("#new-playlist").addEventListener("click", createPlaylist);
+  $("#queue-select-all").addEventListener("change", event => {
+    const queue = state.player?.queue || [];
+    if (event.currentTarget.checked) queue.forEach((_entry, index) => state.selectedQueueIndexes.add(index));
+    else clearQueueSelection();
+    syncQueueSelectionControls(queue);
+    renderQueue(queue);
+  });
+  $("#queue-add-to-playlist").addEventListener("click", openQueuePlaylistDialog);
+  $("#queue-playlist-target").addEventListener("change", updateQueuePlaylistDialogMode);
+  $("#queue-playlist-cancel").addEventListener("click", closeQueuePlaylistDialog);
+  $("#queue-playlist-form").addEventListener("submit", submitQueuePlaylistDialog);
   $("#playlist-delete").addEventListener("click", deletePlaylist);
   $("#playlist-queue-all").addEventListener("click", async event => {
     const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
