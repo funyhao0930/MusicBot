@@ -59,6 +59,10 @@ def public_api_routes(controller: Any) -> list[Any]:
         ),
         web.post("/api/playlists", controller._handle_playlists_post),
         web.delete(
+            "/api/playlists/{name}",
+            controller._handle_playlist_delete,
+        ),
+        web.delete(
             "/api/playlists/{name}/{index}",
             controller._handle_playlist_track_delete,
         ),
@@ -724,8 +728,25 @@ class MusicBotWebUI:
         return {
             "name": name,
             "filename": playlist.filename,
+            "deletable": self._playlist_can_delete(name),
             "tracks": tracks,
         }
+
+    def _playlist_in_use(self, name: str) -> bool:
+        filename = f"{name}.txt".casefold()
+        for server_data in getattr(self.bot, "server_data", {}).values():
+            playlist = getattr(server_data, "autoplaylist", None)
+            if playlist is not None and str(
+                getattr(playlist, "filename", "")
+            ).casefold() == filename:
+                return True
+        return False
+
+    def _playlist_can_delete(self, name: str) -> bool:
+        manager = self.bot.playlist_mgr
+        return not manager.is_protected_playlist(
+            f"{name}.txt"
+        ) and not self._playlist_in_use(name)
 
     @staticmethod
     def _playlist_sources(playlist: Any) -> list[str]:
@@ -894,6 +915,27 @@ class MusicBotWebUI:
         return web.json_response(
             {"ok": True, "playlist": await self._playlist_payload(name)}
         )
+
+    async def _handle_playlist_delete(self, request: web.Request) -> web.Response:
+        try:
+            name = self._playlist_name(request.match_info["name"])
+            if self.bot.playlist_mgr.is_protected_playlist(f"{name}.txt"):
+                raise PermissionError("System playlists are protected")
+            if self._playlist_in_use(name):
+                raise RuntimeError(
+                    "Playlist is in use; switch the server to another playlist first"
+                )
+            self.bot.playlist_mgr.delete_playlist(f"{name}.txt")
+        except PermissionError as exc:
+            return self._error(str(exc), status=403)
+        except RuntimeError as exc:
+            return self._error(str(exc), status=409)
+        except LookupError as exc:
+            return self._error(str(exc), status=404)
+        except (OSError, TypeError, ValueError) as exc:
+            return self._error(str(exc), status=400)
+
+        return web.json_response({"ok": True, "name": name})
 
     async def _handle_permissions(self, _request: web.Request) -> web.Response:
         permissions = self.bot.permissions

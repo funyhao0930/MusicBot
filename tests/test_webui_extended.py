@@ -186,6 +186,17 @@ class _AutoPlaylistManager:
             self.playlists[name] = _AutoPlaylist(name)
         return self.playlists[name]
 
+    def is_protected_playlist(self, filename):
+        return Path(filename).stem in {"default", "history", "autoplaylist"}
+
+    def delete_playlist(self, filename):
+        name = Path(filename).stem
+        if name in {"default", "history", "autoplaylist"}:
+            raise PermissionError("System playlists are protected")
+        if name not in self.playlists:
+            raise LookupError("Playlist does not exist")
+        del self.playlists[name]
+
 
 class _Permissions:
     def __init__(self):
@@ -284,6 +295,7 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
             latency=0.01,
             exit_signal=None,
             logout_called_by_test=False,
+            server_data={},
         )
 
         async def logout():
@@ -325,6 +337,7 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="restart-full"', html)
         self.assertIn('id="repeat-song"', html)
         self.assertIn('data-action="repeat_song"', html)
+        self.assertIn('id="playlist-delete"', html)
         self.assertIn("關閉循環", html)
         self.assertIn('aria-pressed="false"', html)
         self.assertIn('/assets/styles.css?v=7', html)
@@ -360,6 +373,7 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('class="button ghost playlist-queue"', javascript)
         self.assertIn("歌名載入中…", javascript)
         self.assertIn("playlist-track-title-loading", javascript)
+        self.assertIn('DELETE', javascript)
 
     async def test_volume_control_is_grouped_with_transport_controls(self):
         class _TransportVolumeParser(HTMLParser):
@@ -1042,6 +1056,85 @@ Object.defineProperty(context, "calls", { get() { return calls; } });
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    async def test_playlist_delete_button_confirms_and_removes_selected_playlist(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+
+function createElement(tag = "div") {
+  const children = [];
+  const element = {
+    tagName: tag.toUpperCase(), children, hidden: false, disabled: false,
+    dataset: {}, style: {}, textContent: "", className: "", listeners: {},
+    classList: { add() {}, remove() {}, toggle() {} },
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+    append(...nodes) { children.push(...nodes); },
+    replaceChildren(...nodes) { children.splice(0, children.length, ...nodes); },
+    querySelectorAll() { return []; },
+    querySelector(selector) {
+      if (!this._parts) this._parts = {};
+      if (!this._parts[selector]) this._parts[selector] = createElement();
+      return this._parts[selector];
+    },
+  };
+  Object.defineProperty(element, "innerHTML", { set() {}, get() { return ""; } });
+  return element;
+}
+
+const elements = new Map();
+for (const id of [
+  "#playlist-title", "#playlist-count", "#playlist-empty", "#playlist-add-form",
+  "#playlist-tracks", "#playlist-tabs", "#playlist-delete", "#toast-region",
+]) elements.set(id, createElement());
+elements.get("#playlist-add-form").querySelectorAll = () => [];
+const context = {
+  document: {
+    addEventListener() {},
+    createElement,
+    querySelector(selector) { return elements.get(selector) || createElement(); },
+  },
+  window: { confirm() { return true; } },
+  console, fetch: async () => { throw new Error("unexpected fetch"); },
+  performance: { now: () => 0 }, requestAnimationFrame() {}, setTimeout(callback) { callback(); },
+  encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+vm.runInContext(`
+  state.currentPlaylist = "晚安歌單";
+  state.playlists = [
+    { name: "晚安歌單", deletable: true, tracks: [{ source: "track one", title: "Track One" }] },
+    { name: "default", deletable: false, tracks: [] },
+  ];
+  const calls = [];
+  api = async (path, options) => { calls.push({ path, method: options.method }); return { ok: true }; };
+  renderPlaylistEditor();
+  deletePlaylist();
+`, context);
+
+(async () => {
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const calls = vm.runInContext("calls", context);
+  if (calls.length !== 1 || calls[0].method !== "DELETE") throw new Error("delete request was not sent");
+  if (calls[0].path !== "/api/playlists/%E6%99%9A%E5%AE%89%E6%AD%8C%E5%96%AE") throw new Error("wrong delete endpoint");
+  if (vm.runInContext("state.playlists.some(item => item.name === '晚安歌單')", context)) {
+    throw new Error("deleted playlist remained in UI state");
+  }
+  if (vm.runInContext("state.currentPlaylist", context) !== "default") {
+    throw new Error("UI did not select the next available playlist");
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     async def test_playlist_all_queue_button_imports_selected_playlist(self):
         app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
         harness = r"""
@@ -1438,6 +1531,7 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
             payload["playlists"][0]["tracks"],
             [{"source": "track one", "title": "track one"}],
         )
+        self.assertFalse(payload["playlists"][0]["deletable"])
         self.assertEqual(self.bot.downloader.calls, [])
 
         response = await self.client.get("/api/playlists/default/titles")
@@ -1460,6 +1554,8 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
         )
         self.assertEqual(response.status, 200)
         self.assertIn("late-night", self.bot.playlist_mgr.playlists)
+        payload = await response.json()
+        self.assertTrue(payload["playlist"]["deletable"])
 
         response = await self.client.post(
             "/api/playlists",
@@ -1482,6 +1578,35 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
         )
         self.assertEqual(response.status, 200)
         self.assertEqual(self.bot.playlist_mgr.playlists["late-night"].data, [])
+
+        response = await self.client.delete(
+            "/api/playlists/late-night",
+            headers=self._headers(),
+        )
+        self.assertEqual(response.status, 200)
+        self.assertNotIn("late-night", self.bot.playlist_mgr.playlists)
+
+    async def test_playlist_delete_protects_system_and_active_playlists(self):
+        response = await self.client.delete(
+            "/api/playlists/default",
+            headers=self._headers(),
+        )
+        self.assertEqual(response.status, 403)
+
+        await self.client.post(
+            "/api/playlists",
+            json={"action": "create", "name": "active"},
+            headers=self._headers(),
+        )
+        self.bot.server_data[1] = SimpleNamespace(
+            autoplaylist=self.bot.playlist_mgr.playlists["active"]
+        )
+        response = await self.client.delete(
+            "/api/playlists/active",
+            headers=self._headers(),
+        )
+        self.assertEqual(response.status, 409)
+        self.assertIn("active", self.bot.playlist_mgr.playlists)
 
     async def test_playlist_title_falls_back_to_source_when_lookup_fails(self):
         source = "https://example.test/unavailable"
