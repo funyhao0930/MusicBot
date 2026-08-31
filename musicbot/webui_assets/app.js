@@ -31,6 +31,12 @@ const REPEAT_NEXT_ACTIONS = {
   "song": "repeat_all",
   "all": "repeat_off",
 };
+const CONTROL_ICONS = {
+  play: "/assets/icon-play.svg",
+  pause: "/assets/icon-pause.svg",
+  repeat: "/assets/icon-repeat.svg",
+  repeat_one: "/assets/icon-repeat-one.svg",
+};
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -217,6 +223,8 @@ function renderPlayer(player) {
   const progressRange = $("#progress-range");
   progressRange.max = total || 100;
   progressRange.disabled = !player?.current || total <= 0;
+  const progressPercent = total > 0 ? Math.min(100, Math.max(0, progress / total * 100)) : 0;
+  progressRange.style?.setProperty?.("--progress-fill", `${progressPercent}%`);
   if (!state.scrubbing) {
     progressRange.value = progress;
     $("#time-current").textContent = formatTime(progress);
@@ -224,11 +232,28 @@ function renderPlayer(player) {
   $("#time-total").textContent = formatTime(total);
 
   const toggle = $("#play-toggle");
-  toggle.dataset.action = player?.state === "paused" ? "resume" : "pause";
-  toggle.textContent = player?.state === "paused" ? "繼續" : "暫停";
+  const paused = player?.state === "paused";
+  toggle.dataset.action = paused ? "resume" : "pause";
+  $("#play-toggle-icon").src = paused || !player?.current ? CONTROL_ICONS.play : CONTROL_ICONS.pause;
+  toggle.setAttribute("aria-label", paused || !player?.current ? "播放" : "暫停");
+  toggle.title = paused || !player?.current ? "播放" : "暫停";
   toggle.disabled = !player?.current;
 
-  const repeat = $("#repeat-song");
+  const shuffle = $("#transport-shuffle");
+  const shuffleEnabled = Boolean(player?.shuffle);
+  shuffle.classList.toggle("is-active", shuffleEnabled);
+  shuffle.setAttribute("aria-pressed", String(shuffleEnabled));
+  shuffle.setAttribute("aria-label", shuffleEnabled ? "啟用隨機播放" : "關閉隨機播放");
+  $(".transport-state-dot", shuffle).hidden = !shuffleEnabled;
+  shuffle.disabled = !player?.current && !(player?.queue || []).length;
+
+  const previous = $("#transport-previous");
+  previous.disabled = !player?.can_previous;
+
+  const next = $("#transport-next");
+  next.disabled = !player?.current;
+
+  const repeat = $("#transport-repeat");
   const repeatMode = ["song", "all", "off"].includes(player?.repeat_mode)
     ? player.repeat_mode
     : player?.repeat_song
@@ -239,12 +264,16 @@ function renderPlayer(player) {
   const repeatEnabled = repeatMode !== "off";
   const repeatLabel = REPEAT_LABELS[repeatMode];
   const nextAction = REPEAT_NEXT_ACTIONS[repeatMode];
-  repeat.textContent = repeatLabel;
   repeat.dataset.action = nextAction;
   repeat.classList.toggle("is-active", repeatEnabled);
   repeat.setAttribute("aria-pressed", String(repeatEnabled));
   repeat.setAttribute("aria-label", `${repeatLabel}，點擊切換循環模式`);
+  repeat.title = repeatLabel;
+  $("#repeat-icon").src = repeatMode === "song" ? CONTROL_ICONS.repeat_one : CONTROL_ICONS.repeat;
+  $("#repeat-state-dot").hidden = repeatMode !== "all";
   repeat.disabled = !player?.current;
+
+  $("#transport-stop").disabled = !player?.current;
 
   const volume = Math.round((player?.volume ?? .25) * 100);
   $("#volume-range").value = volume;
@@ -255,6 +284,7 @@ function renderPlayer(player) {
 function renderQueue(queue) {
   const list = $("#queue-list");
   $("#queue-count").textContent = `${queue.length} 首`;
+  $("#queue-clear").disabled = queue.length === 0;
   $("#queue-empty").hidden = queue.length > 0;
   list.hidden = queue.length === 0;
 
@@ -442,6 +472,20 @@ function playlistTitleLoadStates(name) {
   return state.playlistTitleLoads[name];
 }
 
+function updatePlaylistTrackTitle(name, source) {
+  if (state.currentPlaylist !== name) return;
+  const playlist = state.playlists.find(item => item.name === name);
+  const track = playlist?.tracks.find(item => playlistTrackSource(item) === source);
+  if (!track) return;
+
+  $$(".playlist-track", $("#playlist-tracks")).forEach(row => {
+    if (row.dataset.source !== source) return;
+    const title = $("strong", row);
+    title.textContent = playlistTrackTitle(track);
+    title.classList.remove("playlist-track-title-loading");
+  });
+}
+
 function renderPlaylistEditor() {
   const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
   const tracks = playlist?.tracks || [];
@@ -464,6 +508,7 @@ function renderPlaylistEditor() {
     const title = titleState === "loading" ? "歌名載入中…" : playlistTrackTitle(track);
     const row = document.createElement("div");
     row.className = "playlist-track";
+    row.dataset.source = source;
     row.innerHTML = `<span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="playlist-track-copy"><strong></strong><small></small></div><div class="playlist-track-actions"><button class="button ghost playlist-queue" type="button">加入隊列</button><button class="queue-remove" type="button">移除</button></div>`;
     $("strong", row).textContent = title;
     $("strong", row).classList.toggle("playlist-track-title-loading", titleState === "loading");
@@ -580,11 +625,11 @@ async function loadPlaylistTrackTitle(name, index, source) {
       ));
     }
     playlistTitleLoadStates(name)[source] = "loaded";
-    if (state.currentPlaylist === name) renderPlaylistEditor();
+    updatePlaylistTrackTitle(name, source);
     return true;
   } catch {
     playlistTitleLoadStates(name)[source] = "error";
-    if (state.currentPlaylist === name) renderPlaylistEditor();
+    updatePlaylistTrackTitle(name, source);
     return false;
   }
 }

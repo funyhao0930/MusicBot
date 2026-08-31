@@ -28,6 +28,15 @@ _LOG_SECRET_RE = re.compile(
 _ASSET_CONTENT_TYPES = {
     "styles.css": "text/css",
     "app.js": "application/javascript",
+    "icon-shuffle.svg": "image/svg+xml",
+    "icon-skip-previous.svg": "image/svg+xml",
+    "icon-play.svg": "image/svg+xml",
+    "icon-pause.svg": "image/svg+xml",
+    "icon-skip-next.svg": "image/svg+xml",
+    "icon-repeat.svg": "image/svg+xml",
+    "icon-repeat-one.svg": "image/svg+xml",
+    "icon-stop.svg": "image/svg+xml",
+    "icon-state-dot.svg": "image/svg+xml",
 }
 _PROTECTED_PERMISSION_GROUPS = {"owner", "default"}
 
@@ -383,6 +392,8 @@ class MusicBotWebUI:
             "repeat_mode": repeat_mode,
             "repeat_song": repeat_song,
             "repeat_all": repeat_all,
+            "shuffle": bool(getattr(player, "shuffle", False)),
+            "can_previous": bool(getattr(player, "can_previous", False)),
             "queue": [entry_to_payload(entry) for entry in entries],
         }
 
@@ -445,6 +456,8 @@ class MusicBotWebUI:
             elif action == "skip":
                 player.repeatsong = False
                 player.skip()
+            elif action == "previous":
+                player.previous()
             elif action == "stop":
                 player.stop()
             elif action in {"repeat", "repeat_song", "repeat_all", "repeat_off"}:
@@ -469,7 +482,9 @@ class MusicBotWebUI:
                     player.repeatsong = False
                     player.loopqueue = False
             elif action == "shuffle":
-                player.playlist.shuffle()
+                player.shuffle = not bool(getattr(player, "shuffle", False))
+                if player.shuffle:
+                    player.playlist.shuffle()
             elif action == "clear":
                 player.playlist.clear()
             else:

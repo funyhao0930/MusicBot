@@ -6,9 +6,10 @@ import math
 import os
 import sys
 import time
+from collections import deque
 from enum import Enum
 from threading import Thread
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Union
 
 from discord import AudioSource, FFmpegPCMAudio, PCMVolumeTransformer, VoiceClient
 
@@ -99,6 +100,8 @@ class SourcePlaybackCounter(AudioSource):
 
 
 class MusicPlayer(EventEmitter, Serializable):
+    PLAY_HISTORY_LIMIT = 20
+
     def __init__(
         self,
         bot: "MusicBot",
@@ -117,6 +120,7 @@ class MusicPlayer(EventEmitter, Serializable):
         self.loop: asyncio.AbstractEventLoop = bot.loop
         self.loopqueue: bool = False
         self.repeatsong: bool = False
+        self.shuffle: bool = False
         self.voice_client: VoiceClient = voice_client
         self.playlist: "Playlist" = playlist
         self.autoplaylist: List[str] = []
@@ -132,6 +136,8 @@ class MusicPlayer(EventEmitter, Serializable):
         self._current_entry: Optional[EntryTypes] = None
         self._stderr_future: Optional[AsyncFuture] = None
         self._seek_position: Optional[float] = None
+        self._play_history: Deque[EntryTypes] = deque()
+        self._previous_transition: bool = False
 
         self._source: Optional[SourcePlaybackCounter] = None
 
@@ -159,6 +165,9 @@ class MusicPlayer(EventEmitter, Serializable):
         """
         Event dispatched by Playlist when an entry is added to the queue.
         """
+        if self.shuffle and len(playlist.entries) > 1:
+            playlist.shuffle()
+
         self.emit(
             "entry-added",
             player=self,
@@ -179,6 +188,35 @@ class MusicPlayer(EventEmitter, Serializable):
             "MusicPlayer.skip() is called:  %s", repr(self)
         )
         self._kill_current_player()
+
+    @property
+    def can_previous(self) -> bool:
+        """Return whether the current track can move back through this session."""
+        return self._current_entry is not None and bool(self._play_history)
+
+    def previous(self) -> None:
+        """Play the most recently completed track before the current track."""
+        if not self.can_previous:
+            raise ValueError("No previously played song")
+
+        previous_entry = self._play_history.pop()
+        current_entry = self._current_entry
+        assert current_entry is not None
+
+        for entry in (previous_entry, current_entry):
+            if hasattr(entry, "set_start_time"):
+                entry.set_start_time(0)
+
+        self.playlist.entries.appendleft(current_entry)
+        self.playlist.entries.appendleft(previous_entry)
+        self._previous_transition = True
+
+        if not self._kill_current_player():
+            self.playlist.entries.popleft()
+            self.playlist.entries.popleft()
+            self._play_history.append(previous_entry)
+            self._previous_transition = False
+            raise RuntimeError("Playback source is not available for previous track")
 
     def seek(self, position: float) -> None:
         """Restart the current entry at an absolute position in seconds."""
@@ -270,8 +308,16 @@ class MusicPlayer(EventEmitter, Serializable):
         )
         self.state = MusicPlayerState.DEAD
         self.playlist.clear()
+        previous_entries = list(self._play_history)
+        self._play_history.clear()
         self._events.clear()
         self._kill_current_player()
+
+        if not self.bot.config.save_videos:
+            for entry in previous_entries:
+                self.bot.create_task(
+                    self._handle_file_cleanup(entry), name="MB_CacheCleanup"
+                )
 
     def _playback_finished(self, error: Optional[Exception] = None) -> None:
         """
@@ -298,14 +344,23 @@ class MusicPlayer(EventEmitter, Serializable):
         seek_position = self._seek_position
         self._seek_position = None
         is_seeking = seek_position is not None
+        previous_transition = getattr(self, "_previous_transition", False)
+        self._previous_transition = False
+        was_stopped = getattr(self, "state", None) == MusicPlayerState.STOPPED
 
         if is_seeking:
             entry.set_start_time(seek_position)
             self.playlist.entries.appendleft(entry)
+        elif previous_transition:
+            pass
         elif self.repeatsong:
+            if hasattr(entry, "set_start_time"):
+                entry.set_start_time(0)
             self.playlist.entries.appendleft(entry)
         elif self.loopqueue:
             self.playlist.entries.append(entry)
+            if self.shuffle:
+                self.playlist.shuffle()
 
         # TODO: investigate if this is cruft code or not.
         if self._current_player:
@@ -335,6 +390,9 @@ class MusicPlayer(EventEmitter, Serializable):
             )
             return
 
+        if not is_seeking and not previous_transition and not self.repeatsong and not was_stopped:
+            self._remember_completed_entry(entry)
+
         # ensure file cleanup is handled if nothing was wrong with playback.
         if not is_seeking and not self.bot.config.save_videos and entry:
             self.bot.create_task(
@@ -343,6 +401,18 @@ class MusicPlayer(EventEmitter, Serializable):
 
         # finally, tell the rest of MusicBot that playback is done.
         self.emit("finished-playing", player=self, entry=entry)
+
+    def _remember_completed_entry(self, entry: EntryTypes) -> None:
+        """Retain a bounded session history so the previous control can replay it."""
+        evicted_entry = None
+        if len(self._play_history) >= self.PLAY_HISTORY_LIMIT:
+            evicted_entry = self._play_history.popleft()
+        self._play_history.append(entry)
+
+        if evicted_entry and not self.bot.config.save_videos:
+            self.bot.create_task(
+                self._handle_file_cleanup(evicted_entry), name="MB_CacheCleanup"
+            )
 
     def _kill_current_player(self) -> bool:
         """
@@ -487,7 +557,8 @@ class MusicPlayer(EventEmitter, Serializable):
         cache is not enabled.
         """
         if not isinstance(entry, StreamPlaylistEntry):
-            if any(entry.filename == e.filename for e in self.playlist.entries):
+            retained_entries = (*self.playlist.entries, *self._play_history)
+            if any(entry.filename == queued.filename for queued in retained_entries):
                 log.debug(
                     "Skipping deletion of '%s', found song in queue",
                     entry.filename,

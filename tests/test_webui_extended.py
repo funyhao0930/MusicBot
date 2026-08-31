@@ -335,13 +335,20 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="permission-add-group"', html)
         self.assertIn('id="restart-soft"', html)
         self.assertIn('id="restart-full"', html)
-        self.assertIn('id="repeat-song"', html)
-        self.assertIn('data-action="repeat_song"', html)
+        self.assertIn('id="transport-shuffle"', html)
+        self.assertIn('id="transport-previous"', html)
+        self.assertIn('id="transport-next"', html)
+        self.assertIn('id="transport-repeat"', html)
+        self.assertIn('id="transport-stop"', html)
+        self.assertIn('id="queue-clear"', html)
+        self.assertIn('data-action="previous"', html)
+        self.assertIn('aria-label="上一首"', html)
         self.assertIn('id="playlist-delete"', html)
-        self.assertIn("關閉循環", html)
+        self.assertIn('/assets/icon-shuffle.svg', html)
+        self.assertIn('/assets/icon-repeat.svg', html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=7', html)
-        self.assertIn('/assets/app.js?v=11', html)
+        self.assertIn('/assets/styles.css?v=8', html)
+        self.assertIn('/assets/app.js?v=12', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -355,6 +362,9 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("@keyframes saved-flash", css)
         self.assertIn("@keyframes toast-in", css)
         self.assertIn("@keyframes title-loading-pulse", css)
+        self.assertIn(".transport-icon", css)
+        self.assertIn(".transport-main", css)
+        self.assertIn(".transport-state-dot", css)
 
         response = await self.client.get("/assets/app.js")
         self.assertEqual(response.status, 200)
@@ -366,14 +376,20 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("image.onerror = () =>", javascript)
         self.assertIn('image.removeAttribute("src")', javascript)
         self.assertIn("fallback.hidden = false", javascript)
-        self.assertIn(r'"song": "\u55ae\u66f2\u5faa\u74b0"', javascript)
-        self.assertIn(r'"all": "\u5168\u90e8\u5faa\u74b0"', javascript)
-        self.assertIn(r'"off": "\u95dc\u9589\u5faa\u74b0"', javascript)
+        self.assertIn('const shuffle = $("#transport-shuffle")', javascript)
+        self.assertIn('const previous = $("#transport-previous")', javascript)
+        self.assertIn('const repeat = $("#transport-repeat")', javascript)
         self.assertIn('repeat.dataset.action = nextAction', javascript)
+        self.assertIn('previous.disabled = !player?.can_previous', javascript)
         self.assertIn('class="button ghost playlist-queue"', javascript)
         self.assertIn("歌名載入中…", javascript)
         self.assertIn("playlist-track-title-loading", javascript)
         self.assertIn('DELETE', javascript)
+
+        response = await self.client.get("/assets/icon-shuffle.svg")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.content_type, "image/svg+xml")
+        self.assertIn("<svg", await response.text())
 
     async def test_volume_control_is_grouped_with_transport_controls(self):
         class _TransportVolumeParser(HTMLParser):
@@ -717,6 +733,17 @@ for (const id of [
   "#playlist-add-form", "#playlist-tracks", "#playlist-tabs",
 ]) elements.set(id, createElement());
 elements.get("#playlist-add-form").querySelectorAll = () => [];
+let trackRenderCalls = 0;
+const originalTrackReplaceChildren = elements.get("#playlist-tracks").replaceChildren;
+elements.get("#playlist-tracks").replaceChildren = (...nodes) => {
+  trackRenderCalls += 1;
+  originalTrackReplaceChildren.call(elements.get("#playlist-tracks"), ...nodes);
+};
+elements.get("#playlist-tracks").querySelectorAll = selector => (
+  selector === ".playlist-track"
+    ? elements.get("#playlist-tracks").children.filter(node => node.className === "playlist-track")
+    : []
+);
 
 const document = {
   addEventListener() {},
@@ -789,6 +816,9 @@ Object.defineProperty(context, "titleCalls", {
   await Promise.resolve();
   if (elements.get("#playlist-tracks").children[0].querySelector("strong").textContent !== "Title 0") {
     throw new Error("completed title did not update its playlist row");
+  }
+  if (trackRenderCalls > 2) {
+    throw new Error(`title loading rerendered the entire track list ${trackRenderCalls} times`);
   }
 
   await vm.runInContext("loadPlaylists()", context);

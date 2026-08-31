@@ -159,11 +159,13 @@ class WebUIDataTests(unittest.TestCase):
 class _FakePlaylist:
     def __init__(self, entries):
         self.entries = deque(entries)
+        self.shuffle_calls = 0
 
     def __len__(self):
         return len(self.entries)
 
     def shuffle(self):
+        self.shuffle_calls += 1
         self.entries.reverse()
 
     def clear(self):
@@ -198,6 +200,8 @@ class _FakePlayer:
         self.is_dead = False
         self.repeatsong = False
         self.loopqueue = False
+        self.shuffle = False
+        self.can_previous = False
         self.calls = []
 
     def pause(self):
@@ -220,6 +224,11 @@ class _FakePlayer:
     def seek(self, position):
         self.calls.append(("seek", position))
         self.progress = position
+
+    def previous(self):
+        if not self.can_previous:
+            raise ValueError("No previously played song")
+        self.calls.append("previous")
 
 
 class WebUIAPITests(unittest.IsolatedAsyncioTestCase):
@@ -284,6 +293,8 @@ class WebUIAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["current"]["title"], "Night Drive")
         self.assertEqual(len(payload["queue"]), 2)
         self.assertEqual(payload["voice_channel"]["name"], "深夜電台")
+        self.assertFalse(payload["shuffle"])
+        self.assertFalse(payload["can_previous"])
 
     async def test_guild_endpoint_serializes_snowflake_as_string(self) -> None:
         guild_id = 1363416878059487264
@@ -355,6 +366,46 @@ class WebUIAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         self.assertFalse(self.player.repeatsong)
         self.assertEqual(self.player.calls[-1], "skip")
+
+    async def test_previous_action_requires_history_then_plays_previous_track(self) -> None:
+        response = await self.client.post(
+            "/api/player/action",
+            json={"guild_id": 1, "action": "previous"},
+            headers=self._write_headers(),
+        )
+        self.assertEqual(response.status, 400)
+        self.assertEqual((await response.json())["error"], "No previously played song")
+
+        self.player.can_previous = True
+        response = await self.client.post(
+            "/api/player/action",
+            json={"guild_id": 1, "action": "previous"},
+            headers=self._write_headers(),
+        )
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(self.player.calls[-1], "previous")
+        self.assertTrue(payload["player"]["can_previous"])
+
+    async def test_shuffle_action_toggles_persistent_player_state(self) -> None:
+        response = await self.client.post(
+            "/api/player/action",
+            json={"guild_id": 1, "action": "shuffle"},
+            headers=self._write_headers(),
+        )
+        self.assertEqual(response.status, 200)
+        self.assertTrue(self.player.shuffle)
+        self.assertEqual(self.player.playlist.shuffle_calls, 1)
+        self.assertTrue((await response.json())["player"]["shuffle"])
+
+        response = await self.client.post(
+            "/api/player/action",
+            json={"guild_id": 1, "action": "shuffle"},
+            headers=self._write_headers(),
+        )
+        self.assertEqual(response.status, 200)
+        self.assertFalse(self.player.shuffle)
+        self.assertEqual(self.player.playlist.shuffle_calls, 1)
 
     async def test_player_seek_moves_to_requested_position(self) -> None:
         response = await self.client.post(

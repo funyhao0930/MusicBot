@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>糖音機 控制中心</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=7">
+  <link rel="stylesheet" href="/assets/styles.css?v=8">
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -82,12 +82,26 @@
 
             <div class="transport" aria-label="播放控制">
               <div class="transport-actions">
-                <button class="button ghost" data-action="shuffle">隨機</button>
-                <button class="button ghost" id="repeat-song" data-action="repeat_song" aria-pressed="false" aria-label="關閉循環，點擊切換循環模式">關閉循環</button>
-                <button class="button ghost" data-action="skip">跳過</button>
-                <button class="button primary transport-main" id="play-toggle" data-action="pause">暫停</button>
-                <button class="button ghost" data-action="stop">停止</button>
-                <button class="button ghost" data-action="clear">清空</button>
+                <button class="transport-icon" id="transport-shuffle" type="button" data-action="shuffle" aria-pressed="false" aria-label="關閉隨機播放" title="隨機播放">
+                  <img src="/assets/icon-shuffle.svg" alt="">
+                  <img class="transport-state-dot" src="/assets/icon-state-dot.svg" alt="" hidden>
+                </button>
+                <button class="transport-icon" id="transport-previous" type="button" data-action="previous" aria-label="上一首" title="上一首" disabled>
+                  <img src="/assets/icon-skip-previous.svg" alt="">
+                </button>
+                <button class="transport-main" id="play-toggle" type="button" data-action="pause" aria-label="暫停" title="暫停">
+                  <img id="play-toggle-icon" src="/assets/icon-pause.svg" alt="">
+                </button>
+                <button class="transport-icon" id="transport-next" type="button" data-action="skip" aria-label="下一首" title="下一首">
+                  <img src="/assets/icon-skip-next.svg" alt="">
+                </button>
+                <button class="transport-icon" id="transport-repeat" type="button" data-action="repeat_song" aria-pressed="false" aria-label="關閉循環，點擊切換循環模式" title="循環模式">
+                  <img id="repeat-icon" src="/assets/icon-repeat.svg" alt="">
+                  <img class="transport-state-dot" id="repeat-state-dot" src="/assets/icon-state-dot.svg" alt="" hidden>
+                </button>
+              </div>
+              <div class="transport-secondary">
+                <button class="transport-stop" id="transport-stop" type="button" data-action="stop" aria-label="停止播放" title="停止播放"><img src="/assets/icon-stop.svg" alt=""><span>停止</span></button>
               </div>
               <div class="volume-row">
                 <label for="volume-range">音量 <output id="volume-output">25%</output></label>
@@ -99,7 +113,7 @@
           <aside class="queue-panel" aria-labelledby="queue-heading">
             <div class="panel-heading">
               <div><p class="section-kicker">UP NEXT</p><h2 id="queue-heading">播放佇列</h2></div>
-              <span class="queue-count" id="queue-count">0 首</span>
+              <div class="queue-heading-actions"><span class="queue-count" id="queue-count">0 首</span><button class="queue-clear" id="queue-clear" type="button" data-action="clear" disabled>清空</button></div>
             </div>
 
             <form class="add-track" id="add-track-form">
@@ -189,6 +203,6 @@
     <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=11" defer></script>
+  <script src="/assets/app.js?v=12" defer></script>
 </body>
 </html>
