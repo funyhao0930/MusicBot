@@ -25,6 +25,23 @@ from .utils import _get_variable
 
 log = logging.getLogger(__name__)
 
+def _append_command_usage_notice(
+    content: Union[str, discord.Embed], notice: str
+) -> Union[str, discord.Embed]:
+    """Append the web-control migration notice to a command response."""
+    if not notice:
+        return content
+
+    if isinstance(content, discord.Embed):
+        if content.description:
+            content.description = f"{content.description}\n\n{notice}"
+        else:
+            content.description = notice
+        return content
+
+    return f"{content}\n\n{notice}"
+
+
 if TYPE_CHECKING:
     from .autoplaylist import AutoPlaylist
     from .bot import MusicBot

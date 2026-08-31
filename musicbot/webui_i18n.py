@@ -57,6 +57,10 @@ CONFIG_OPTION_TRANSLATIONS: Dict[str, OptionTranslation] = {
         "指令前綴",
         "所有 MusicBot 指令開頭必須使用的符號或文字。",
     ),
+    "CommandUsageNotice": (
+        "指令回應提醒",
+        "附加在聊天指令回應後的文字；留空即可停用。",
+    ),
     "CommandsByMention": (
         "允許提及機器人下指令",
         "允許使用 @機器人名稱 取代指令前綴；原本的指令前綴仍可使用。",

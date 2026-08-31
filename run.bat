@@ -13,7 +13,7 @@ FOR /F "usebackq tokens=1-3" %%A IN (`REG QUERY %KEY_NAME% /v %VALUE_NAME% 2^>nu
     SET ValueValue=%%C
 )
 
-IF x%ValueValue:0x0=%==x%ValueValue% (
+IF "%ValueValue%"=="0x0" (
     ECHO Unhiding file extensions...
     START CMD /c /k REG ADD HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced /v HideFileExt /t REG_DWORD /d 0 /f
 )
@@ -21,15 +21,15 @@ ENDLOCAL
 
 
 IF EXIST %SYSTEMROOT%\py.exe (
-    CMD /k %SYSTEMROOT%\py.exe -3 run.py %*
+    CMD /c %SYSTEMROOT%\py.exe -3 run.py %*
     EXIT
 )
 
 python --version > NUL 2>&1
 IF %ERRORLEVEL% NEQ 0 GOTO nopython
 
-CMD /k python run.py %*
-GOTO end
+CMD /c python run.py %*
+EXIT
 
 :nopython
 ECHO ERROR: Python has either not been installed or not added to your PATH.

@@ -31,6 +31,30 @@ class WebUIConfigIntegrationTests(unittest.TestCase):
             config.register.get_config_option("WebUI", "WebUIPublicEnabled")
         )
 
+    def test_saving_non_ascii_option_keeps_options_file_utf8(self) -> None:
+        from musicbot.config import Config
+
+        options = pathlib.Path("config/example_options.ini").read_text(
+            encoding="utf-8"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            options_path = pathlib.Path(temp_dir) / "options.ini"
+            options_path.write_text(options, encoding="utf-8")
+            config = Config(options_path)
+            option = config.register.get_config_option(
+                "Chat", "CommandUsageNotice"
+            )
+            self.assertIsNotNone(option)
+            assert option is not None
+
+            self.assertTrue(config.update_option(option, "請改用網頁控制。"))
+            self.assertTrue(config.save_option(option))
+            options_path.read_bytes().decode("utf-8")
+
+            reloaded = Config(options_path)
+
+        self.assertEqual(reloaded.command_usage_notice, "請改用網頁控制。")
+
     def test_webui_host_and_port_are_safely_normalized(self) -> None:
         from musicbot.config import Config
 
@@ -57,6 +81,19 @@ class WebUIConfigIntegrationTests(unittest.TestCase):
 
         self.assertEqual(config.webui_port, 8766)
         self.assertEqual(config.webui_public_port, 8767)
+
+
+class WindowsLauncherIntegrationTests(unittest.TestCase):
+    def test_run_bat_closes_command_prompt_when_musicbot_exits(self) -> None:
+        launcher = pathlib.Path(__file__).parents[1] / "run.bat"
+        content = launcher.read_text(encoding="utf-8")
+
+        self.assertIn("CMD /c %SYSTEMROOT%\\py.exe -3 run.py", content)
+        self.assertIn("CMD /c python run.py", content)
+        self.assertIn("CMD /c python run.py %*\nEXIT", content)
+        self.assertIn('IF "%ValueValue%"=="0x0" (', content)
+        self.assertNotIn("CMD /k %SYSTEMROOT%\\py.exe -3 run.py", content)
+        self.assertNotIn("CMD /k python run.py", content)
 
 
 class WebUILifecycleIntegrationTests(unittest.IsolatedAsyncioTestCase):

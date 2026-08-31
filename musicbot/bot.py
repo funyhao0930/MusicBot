@@ -52,7 +52,7 @@ from .constants import (
 )
 from .constants import VERSION as BOTVERSION
 from .constants import VOICE_CLIENT_MAX_RETRY_CONNECT, VOICE_CLIENT_RECONNECT_TIMEOUT
-from .constructs import GuildSpecificData, Response
+from .constructs import GuildSpecificData, Response, _append_command_usage_notice
 from .entry import LocalFilePlaylistEntry, StreamPlaylistEntry, URLPlaylistEntry
 from .filecache import AudioFileCache
 from .json import Json
@@ -1858,15 +1858,22 @@ class MusicBot(discord.Client):
         :param: expire_in:  time in seconds to wait before auto deleting this message
         :param: allow_none:  Allow sending a message with empty `content`
         :param: also_delete:  Optional discord.Message to delete when `expire_in` is set.
+        :param: command_response:  Append the web-control migration notice.
 
         :returns:  May return a discord.Message object if a message was sent.
         """
         tts = kwargs.pop("tts", False)
         quiet = kwargs.pop("quiet", False)
+        command_response = kwargs.pop("command_response", False)
         expire_in = int(kwargs.pop("expire_in", 0))
         allow_none = kwargs.pop("allow_none", True)
         also_delete = kwargs.pop("also_delete", None)
         fallback_channel = kwargs.pop("fallback_channel", None)
+
+        if command_response:
+            content = _append_command_usage_notice(
+                content, self.config.command_usage_notice
+            )
 
         msg = None
         retry_after = 0.0
@@ -2012,6 +2019,7 @@ class MusicBot(discord.Client):
         *,
         send_if_fail: bool = False,
         quiet: bool = False,
+        command_response: bool = False,
     ) -> Optional[discord.Message]:
         """
         Safely update the given `message` with the `new` content.
@@ -2020,10 +2028,14 @@ class MusicBot(discord.Client):
 
         :param: send_if_fail:  Toggle sending a new message if edit fails.
         :param: quiet:  Use log.debug if quiet otherwise use log.warning
+        :param: command_response:  Append the web-control migration notice.
 
         :returns:  May return a discord.Message object if edit/send did not fail.
         """
         lfunc = log.debug if quiet else log.warning
+
+        if command_response:
+            new = _append_command_usage_notice(new, self.config.command_usage_notice)
 
         try:
             if isinstance(new, discord.Embed):
@@ -2038,7 +2050,9 @@ class MusicBot(discord.Client):
             )
             if send_if_fail:
                 lfunc("Sending message instead")
-                return await self.safe_send_message(message.channel, new)
+                return await self.safe_send_message(
+                    message.channel, new, command_response=command_response
+                )
 
         except discord.HTTPException as e:
             if e.status == 429:
@@ -2063,7 +2077,11 @@ class MusicBot(discord.Client):
                         log.warning("Cancelled message edit for:  %s", message)
                         return None
                     return await self.safe_edit_message(
-                        message, new, send_if_fail=send_if_fail, quiet=quiet
+                        message,
+                        new,
+                        send_if_fail=send_if_fail,
+                        quiet=quiet,
+                        command_response=command_response,
                     )
             else:
                 lfunc("Failed to edit message")
@@ -3552,6 +3570,7 @@ class MusicBot(discord.Client):
                     "Bot was previously paused, resuming playback now.",
                 ),
                 expire_in=30,
+                command_response=True,
             )
 
     async def cmd_play(
@@ -3994,6 +4013,7 @@ class MusicBot(discord.Client):
                 "Successfully moved the requested song from positon number {} in queue to position {}!",
             ).format(indexes[0] + 1, indexes[1] + 1),
             expire_in=30,
+            command_response=True,
         )
 
         song = player.playlist.delete_entry_at_index(indexes[0])
@@ -4023,7 +4043,9 @@ class MusicBot(discord.Client):
         async def _prompt_for_playing(
             prompt: str, next_url: str, ignore_vid: str = ""
         ) -> None:
-            msg = await self.safe_send_message(channel, prompt)
+            msg = await self.safe_send_message(
+                channel, prompt, command_response=True
+            )
             if not msg:
                 log.warning(
                     "Could not prompt for playlist playback, no message to add reactions to."
@@ -4120,6 +4142,7 @@ class MusicBot(discord.Client):
                         expire_in=(
                             response.delete_after if self.config.delete_messages else 0
                         ),
+                        command_response=True,
                     )
                 else:
                     await self.safe_send_message(
@@ -4128,6 +4151,7 @@ class MusicBot(discord.Client):
                         expire_in=(
                             response.delete_after if self.config.delete_messages else 0
                         ),
+                        command_response=True,
                     )
                 player = self.get_player_in(channel.guild)
 
@@ -4591,7 +4615,9 @@ class MusicBot(discord.Client):
         self._do_song_blocklist_check(args_str)
 
         search_msg = await self.safe_send_message(
-            channel, self.str.get("cmd-search-searching", "Searching for videos...")
+            channel,
+            self.str.get("cmd-search-searching", "Searching for videos..."),
+            command_response=True,
         )
         await channel.typing()
 
@@ -4607,7 +4633,12 @@ class MusicBot(discord.Client):
             youtube_dl.networking.exceptions.RequestError,
         ) as e:
             if search_msg:
-                await self.safe_edit_message(search_msg, str(e), send_if_fail=True)
+                await self.safe_edit_message(
+                    search_msg,
+                    str(e),
+                    send_if_fail=True,
+                    command_response=True,
+                )
             return None
 
         else:
@@ -4661,7 +4692,9 @@ class MusicBot(discord.Client):
                     value=result_string,
                     inline=False,
                 )
-                result_message = await self.safe_send_message(channel, content)
+                result_message = await self.safe_send_message(
+                    channel, content, command_response=True
+                )
             else:
                 # Construct the complete message and send it to the channel.
                 result_string = result_header + result_string
@@ -4671,6 +4704,7 @@ class MusicBot(discord.Client):
                     self.str.get("cmd-search-result-list-noembed", "{0}").format(
                         result_string
                     ),
+                    command_response=True,
                 )
 
             # Check to verify that received message is valid.
@@ -4741,6 +4775,7 @@ class MusicBot(discord.Client):
                         info.entry_count,
                         entry["url"],
                     ),
+                    command_response=True,
                 )
                 if not result_message:
                     continue
@@ -4912,7 +4947,10 @@ class MusicBot(discord.Client):
                     log.warning("No thumbnail set for entry with url: %s", entry.url)
 
             self.server_data[guild.id].last_np_msg = await self.safe_send_message(
-                channel, content if self.config.embeds else np_text, expire_in=30
+                channel,
+                content if self.config.embeds else np_text,
+                expire_in=30,
+                command_response=True,
             )
             return None
 
@@ -5100,13 +5138,17 @@ class MusicBot(discord.Client):
         ]
         random.shuffle(cards)
 
-        hand = await self.safe_send_message(channel, " ".join(cards))
+        hand = await self.safe_send_message(
+            channel, " ".join(cards), command_response=True
+        )
         await asyncio.sleep(0.6)
 
         if hand:
             for _ in range(4):
                 random.shuffle(cards)
-                await self.safe_edit_message(hand, " ".join(cards))
+                await self.safe_edit_message(
+                    hand, " ".join(cards), command_response=True
+                )
                 await asyncio.sleep(0.6)
 
             await self.safe_delete_message(hand, quiet=True)
@@ -6166,12 +6208,21 @@ class MusicBot(discord.Client):
 
         # handle sending or editing the queue message.
         if update_msg:
-            q_msg = await self.safe_edit_message(update_msg, embed, send_if_fail=True)
+            q_msg = await self.safe_edit_message(
+                update_msg,
+                embed,
+                send_if_fail=True,
+                command_response=True,
+            )
         else:
             if pages_total <= 1:
-                q_msg = await self.safe_send_message(channel, embed, expire_in=30)
+                q_msg = await self.safe_send_message(
+                    channel, embed, expire_in=30, command_response=True
+                )
             else:
-                q_msg = await self.safe_send_message(channel, embed)
+                q_msg = await self.safe_send_message(
+                    channel, embed, command_response=True
+                )
 
         if pages_total <= 1:
             log.debug("Not enough entries to paginate the queue.")
@@ -6347,7 +6398,10 @@ class MusicBot(discord.Client):
                 fcontent.write(line.encode("utf8"))
 
             fcontent.seek(0)
-            msg_str = f"Here is the playlist dump for:  <{song_url}>"
+            msg_str = _append_command_usage_notice(
+                f"Here is the playlist dump for:  <{song_url}>",
+                self.config.command_usage_notice,
+            )
             datafile = discord.File(fcontent, filename=filename)
 
             try:
@@ -6438,7 +6492,9 @@ class MusicBot(discord.Client):
             sdata.writelines(d.encode("utf8") + b"\n" for d in data)
             sdata.seek(0)
             datafile = discord.File(sdata, filename=fname)
-            msg_str = "Here are the IDs you requested:"
+            msg_str = _append_command_usage_notice(
+                "Here are the IDs you requested:", self.config.command_usage_notice
+            )
 
             try:
                 # try to DM and fall back to channel
@@ -6508,7 +6564,9 @@ class MusicBot(discord.Client):
                 f"```{permissions.format()}```"
             )
 
-        await self.safe_send_message(author, perms, fallback_channel=channel)
+        await self.safe_send_message(
+            author, perms, fallback_channel=channel, command_response=True
+        )
         return Response("\N{OPEN MAILBOX WITH RAISED FLAG}", delete_after=20)
 
     @owner_only
@@ -6990,6 +7048,7 @@ class MusicBot(discord.Client):
                 ).format(
                     emoji="\u21A9\uFE0F",  # Right arrow curving left
                 ),
+                command_response=True,
             )
         elif opt == "full":
             await self.safe_send_message(
@@ -7000,6 +7059,7 @@ class MusicBot(discord.Client):
                 ).format(
                     emoji="\U0001F504",  # counterclockwise arrows
                 ),
+                command_response=True,
             )
         elif opt == "uppip":
             await self.safe_send_message(
@@ -7010,6 +7070,7 @@ class MusicBot(discord.Client):
                 ).format(
                     emoji="\U0001F4E6",  # package / box
                 ),
+                command_response=True,
             )
         elif opt == "upgit":
             await self.safe_send_message(
@@ -7020,6 +7081,7 @@ class MusicBot(discord.Client):
                 ).format(
                     emoji="\U0001F5C3\uFE0F",  # card box
                 ),
+                command_response=True,
             )
         elif opt == "upgrade":
             await self.safe_send_message(
@@ -7030,6 +7092,7 @@ class MusicBot(discord.Client):
                 ).format(
                     emoji="\U0001F310",  # globe with meridians
                 ),
+                command_response=True,
             )
 
         if _player and _player.is_paused:
@@ -7068,7 +7131,9 @@ class MusicBot(discord.Client):
 
         Disconnects from voice channels and closes the bot process.
         """
-        await self.safe_send_message(channel, "\N{WAVING HAND SIGN}")
+        await self.safe_send_message(
+            channel, "\N{WAVING HAND SIGN}", command_response=True
+        )
 
         player = self.get_player_in(guild)
         if player and player.is_paused:
@@ -7250,10 +7315,16 @@ class MusicBot(discord.Client):
             raise exceptions.CommandError(f"Option must be one of: {opts}")
 
         filename = "config_options.md"
-        msg_str = "Config options described in Markdown:\n"
+        msg_str = _append_command_usage_notice(
+            "Config options described in Markdown:\n",
+            self.config.command_usage_notice,
+        )
         if cfg == "perms":
             filename = "config_permissions.md"
-            msg_str = "Permissions described in Markdown:\n"
+            msg_str = _append_command_usage_notice(
+                "Permissions described in Markdown:\n",
+                self.config.command_usage_notice,
+            )
             config_md = self.permissions.register.export_markdown()
         else:
             config_md = self.config.register.export_markdown()
@@ -7683,7 +7754,9 @@ class MusicBot(discord.Client):
                 message.author.id == self.config.owner_id and command == "joinserver"
             ):
                 await self.safe_send_message(
-                    message.channel, "You cannot use this bot in private messages."
+                    message.channel,
+                    "You cannot use this bot in private messages.",
+                    command_response=True,
                 )
                 return
 
@@ -7866,6 +7939,7 @@ class MusicBot(discord.Client):
                     message.channel,
                     f"```\n{docs}\n```",
                     expire_in=60,
+                    command_response=True,
                 )
                 return
 
@@ -7890,6 +7964,7 @@ class MusicBot(discord.Client):
                             response.delete_after if self.config.delete_messages else 0
                         ),
                         also_delete=message if self.config.delete_invoking else None,
+                        command_response=True,
                     )
 
                 else:
@@ -7904,6 +7979,7 @@ class MusicBot(discord.Client):
                             response.delete_after if self.config.delete_messages else 0
                         ),
                         also_delete=message if self.config.delete_invoking else None,
+                        command_response=True,
                     )
 
         except (
@@ -7928,7 +8004,11 @@ class MusicBot(discord.Client):
                 content.colour = discord.Colour(13369344)
 
                 await self.safe_send_message(
-                    message.channel, content, expire_in=expirein, also_delete=alsodelete
+                    message.channel,
+                    content,
+                    expire_in=expirein,
+                    also_delete=alsodelete,
+                    command_response=True,
                 )
 
             else:
@@ -7939,6 +8019,7 @@ class MusicBot(discord.Client):
                     contents,
                     expire_in=expirein,
                     also_delete=alsodelete,
+                    command_response=True,
                 )
 
         except exceptions.Signal:
@@ -7948,7 +8029,11 @@ class MusicBot(discord.Client):
             log.error("Exception in on_message", exc_info=True)
             if self.config.debug_mode:
                 tb_str = traceback.format_exc()
-                await self.safe_send_message(message.channel, f"```\n{tb_str}\n```")
+                await self.safe_send_message(
+                    message.channel,
+                    f"```\n{tb_str}\n```",
+                    command_response=True,
+                )
 
         finally:
             if not sentmsg and not response and self.config.delete_invoking:

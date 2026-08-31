@@ -201,6 +201,16 @@ class Config:
             default=ConfigDefaults.command_prefix,
             comment="Command prefix is how all MusicBot commands must be started",
         )
+        self.command_usage_notice: str = self.register.init_option(
+            section="Chat",
+            option="CommandUsageNotice",
+            dest="command_usage_notice",
+            default=ConfigDefaults.command_usage_notice,
+            comment=(
+                "Text appended to responses triggered by chat commands. "
+                "Leave blank to disable this notice."
+            ),
+        )
         self.commands_via_mention: bool = self.register.init_option(
             section="Chat",
             option="CommandsByMention",
@@ -1303,7 +1313,8 @@ class Config:
                     "Config section not in parsed config! Missing: %s", option.section
                 )
                 return False
-            cu.update_file()
+            with open(self.config_file, "w", encoding="utf-8") as config_file:
+                cu.write(config_file, validate=False)
             log.info(
                 "Saved config option: %s  =  %s",
                 option,
@@ -1342,6 +1353,7 @@ class ConfigDefaults:
     webui_public_port: int = 8766
 
     command_prefix: str = "!"
+    command_usage_notice: str = "提醒：請大家不要再使用這個舊方法，改用網頁控制。"
     commands_via_mention: bool = True
     bound_channels: Set[int] = set()
     unbound_servers: bool = False
