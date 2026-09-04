@@ -82,6 +82,8 @@ class SharedWebUiParityTests(unittest.TestCase):
         self.assertIn('class="playlist-tab-name"', local_app)
         self.assertIn('class="playlist-queue icon-button"', local_app)
         self.assertIn('class="playlist-remove icon-button danger"', local_app)
+        self.assertNotIn('id="playlist-create-cancel"', local_html)
+        self.assertNotIn('playlist-create-cancel', local_app)
 
     def test_local_shared_controls_keep_the_public_responsive_visual_contract(self) -> None:
         """Queue actions and connection feedback remain usable on small or reduced-motion screens."""
@@ -96,6 +98,24 @@ class SharedWebUiParityTests(unittest.TestCase):
         self.assertIn(".icon-button", local_css)
         self.assertIn(".offline-banner", local_css)
         self.assertIn(".is-mutating .queue-item", local_css)
+        self.assertIn(".icon-button.danger {", local_css)
+        self.assertIn("background: rgba(244,63,94,.1)", local_css)
+        self.assertIn(".settings-group > .panel-heading", local_css)
+        self.assertIn(".setting-copy { min-width: 0; }", local_css)
+
+    def test_local_danger_icon_and_settings_heading_contract(self) -> None:
+        local_html = (LOCAL_ASSETS / "index.html").read_text(encoding="utf-8")
+        local_css = (LOCAL_ASSETS / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6", local_html)
+        self.assertIn(".settings-group > h3", local_css)
+        self.assertIn(".settings-group > h3 {", local_css)
+
+    def test_local_mobile_headers_and_settings_count_stay_readable(self) -> None:
+        local_css = (LOCAL_ASSETS / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn(".content-header { display: grid;", local_css)
+        self.assertIn(".settings-toolbar span { white-space: nowrap; }", local_css)
 
 
 if __name__ == "__main__":

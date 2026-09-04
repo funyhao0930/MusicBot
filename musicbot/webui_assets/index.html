@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>糖音機 控制中心</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=10">
+  <link rel="stylesheet" href="/assets/styles.css?v=12">
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -113,7 +113,7 @@
           <aside class="queue-panel" aria-labelledby="queue-heading">
             <div class="panel-heading">
               <div><p class="section-kicker">UP NEXT</p><h2 id="queue-heading">播放佇列</h2></div>
-              <div class="queue-heading-actions"><span class="queue-count" id="queue-count">0 首</span><button class="queue-clear icon-button danger" id="queue-clear" type="button" data-action="clear" aria-label="清空播放佇列" title="清空播放佇列" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-7 0 1 14h4l1-14"/></svg></button></div>
+              <div class="queue-heading-actions"><span class="queue-count" id="queue-count">0 首</span><button class="queue-clear icon-button danger" id="queue-clear" type="button" data-action="clear" aria-label="清空播放佇列" title="清空播放佇列" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6M8 6V4h8v2M10 11v6M14 11v6"/></svg></button></div>
             </div>
 
             <form class="add-track" id="add-track-form">
@@ -147,7 +147,6 @@
         <form class="create-playlist" id="playlist-create-form" hidden>
           <input id="playlist-create-name" type="text" maxlength="80" autocomplete="off" placeholder="輸入播放清單名稱" aria-label="新播放清單名稱">
           <button class="button primary" type="submit">建立</button>
-          <button class="button ghost" id="playlist-create-cancel" type="button">取消</button>
         </form>
         <div class="playlist-workbench">
           <aside class="playlist-tabs" id="playlist-tabs" aria-label="播放清單"></aside>
@@ -242,6 +241,6 @@
     <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=15" defer></script>
+  <script src="/assets/app.js?v=16" defer></script>
 </body>
 </html>

@@ -350,8 +350,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('/assets/icon-shuffle.svg', html)
         self.assertIn('/assets/icon-repeat.svg', html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=10', html)
-        self.assertIn('/assets/app.js?v=15', html)
+        self.assertIn('/assets/styles.css?v=12', html)
+        self.assertIn('/assets/app.js?v=16', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)

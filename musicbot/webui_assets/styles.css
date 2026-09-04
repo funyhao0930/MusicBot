@@ -173,8 +173,9 @@ input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92
 .queue-row-actions, .playlist-track-actions { display: flex; align-items: center; gap: 6px; }
 .icon-button { width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 9px; color: #d8d9e4; background: rgba(255,255,255,.035); display: grid; place-items: center; transition: color var(--motion-ui), background var(--motion-ui), border-color var(--motion-ui), transform var(--motion-fast); }
 .icon-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
+.icon-button.danger { color: #fda4af; background: rgba(244,63,94,.1); border-color: rgba(244,63,94,.24); }
 .icon-button:hover:not(:disabled) { color: var(--text); border-color: rgba(139,92,246,.48); background: rgba(139,92,246,.1); transform: translateY(-1px); }
-.icon-button.danger:hover:not(:disabled) { color: #ffd7df; border-color: rgba(251,113,133,.48); background: rgba(251,113,133,.1); }
+.icon-button.danger:hover:not(:disabled) { color: #ffe4e8; border-color: rgba(244,63,94,.58); background: rgba(244,63,94,.18); }
 .icon-button:disabled { opacity: .36; cursor: not-allowed; }
 .is-mutating .queue-item, .is-mutating .playlist-track { cursor: wait; }
 .empty-state { margin: auto; text-align: center; color: var(--muted); max-width: 250px; }.empty-state strong { color: var(--text); }.empty-state p { font-size: 13px; line-height: 1.6; }
@@ -186,11 +187,13 @@ input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92
 .settings-toolbar, .log-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; }.settings-toolbar input { max-width: 440px; }.settings-toolbar span { color: var(--muted); font-size: 12px; }
 .settings-sections { display: grid; gap: 16px; }
 .settings-group { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; background: rgba(21,24,39,.55); }
-.settings-group > h3 { margin: 0; padding: 17px 20px; font-size: 15px; border-bottom: 1px solid var(--line); }
+.settings-group > h3 { margin: 0; padding: 17px 20px; font-size: 15px; line-height: 1.35; border-bottom: 1px solid var(--line); }
+.settings-group > .panel-heading { align-items: flex-start; padding: 17px 20px; border-bottom: 1px solid var(--line); }
+.settings-group > .panel-heading h3 { min-width: 0; margin: 0; font-size: 15px; line-height: 1.35; }
 .setting-row { display: grid; grid-template-columns: minmax(220px,.7fr) minmax(280px,1fr); gap: 24px; padding: 17px 20px; border-bottom: 1px solid var(--line); transition: background var(--motion-ui); }.setting-row:last-child { border-bottom: 0; }.setting-row.is-saved { animation: saved-flash var(--motion-emphasis); }
 @keyframes saved-flash { 0% { background: rgba(94,234,212,.16); } 100% { background: transparent; } }
-.setting-copy strong { display: block; font-size: 13px; }.setting-copy p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 5px 0 0; }
-.setting-control { display: flex; align-items: center; gap: 9px; }.setting-control input:not([type="checkbox"]) { width: 100%; }.setting-control .button { flex: none; }
+.setting-copy { min-width: 0; }.setting-copy strong { display: block; font-size: 13px; }.setting-copy p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 5px 0 0; }
+.setting-control { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 9px; }.setting-control input:not([type="checkbox"]) { width: 100%; min-width: 0; }.setting-control .button { flex: none; }
 .sensitive-value { color: var(--warning); font: 12px "Cascadia Code", monospace; }
 .toggle-row { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 
@@ -260,10 +263,11 @@ input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92
   .workspace { height: auto; min-height: 100vh; padding: 22px 14px; }.topbar { display: grid; }.topbar-actions { display: grid; grid-template-columns: 1fr 1fr; }.server-select select { min-width: 0; width: 100%; }
   .dashboard-grid { border-radius: 22px; }.now-playing, .queue-panel { padding: 22px; }.art-stage { width: min(72vw, 310px); }.transport-actions { gap: clamp(8px, 3vw, 18px); grid-template-columns: repeat(2, minmax(44px, 1fr)) 88px repeat(2, minmax(44px, 1fr)); }.transport-main { width: 88px; height: 88px; }.transport-main > img { width: 40px; height: 40px; }.transport-icon { width: 46px; height: 46px; }.transport-icon > img:first-child { width: 29px; height: 29px; }.volume-row { grid-template-columns: 90px 1fr; }
   .setting-row { grid-template-columns: 1fr; gap: 12px; }
-  .content-header { align-items: flex-start; }.header-actions { justify-content: flex-start; }
+  .content-header { display: grid; gap: 14px; align-items: flex-start; }.content-header > :first-child { min-width: 0; }.content-header > :last-child { justify-self: start; }.header-actions { justify-content: flex-start; }
+  .settings-toolbar { min-width: 0; }.settings-toolbar input { min-width: 0; flex: 1 1 auto; }.settings-toolbar span { white-space: nowrap; }
   .playlist-workbench { grid-template-columns: 1fr; }.playlist-tabs { border-right: 0; border-bottom: 1px solid var(--line); display: flex; overflow-x: auto; }.playlist-tab { flex: none; }.playlist-editor { padding: 18px; }
   .queue-bulk-actions { align-items: flex-start; flex-wrap: wrap; }.queue-selected-count { flex-basis: 100%; order: 3; }.queue-bulk-actions .button { margin-left: auto; }
-  .queue-row-actions { gap: 4px; }.icon-button { width: 29px; height: 29px; }.create-playlist { grid-template-columns: 1fr auto; }.create-playlist .button:last-child { grid-column: 1 / -1; }.offline-banner { bottom: 12px; width: calc(100% - 24px); justify-content: center; text-align: center; }
+  .queue-row-actions { gap: 4px; }.icon-button { width: 29px; height: 29px; }.create-playlist { grid-template-columns: 1fr auto; }.offline-banner { bottom: 12px; width: calc(100% - 24px); justify-content: center; text-align: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {

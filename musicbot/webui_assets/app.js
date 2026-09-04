@@ -44,7 +44,7 @@ const QUEUE_ACTION_ICONS = {
   up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>',
-  remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-7 0 1 14h4l1-14"/></svg>',
+  remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6M8 6V4h8v2M10 11v6M14 11v6"/></svg>',
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -1084,7 +1084,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("#new-playlist").addEventListener("click", () => setPlaylistCreateOpen(!state.playlistCreateOpen));
   $("#playlist-create-form").addEventListener("submit", createPlaylist);
-  $("#playlist-create-cancel").addEventListener("click", () => setPlaylistCreateOpen(false));
   $("#queue-select-all").addEventListener("change", event => {
     const queue = state.player?.queue || [];
     if (event.currentTarget.checked) queue.forEach((_entry, index) => state.selectedQueueIndexes.add(index));
