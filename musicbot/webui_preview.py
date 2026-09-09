@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import random
 import ipaddress
 import threading
 import webbrowser
@@ -75,6 +76,7 @@ class PreviewState:
 
     def __init__(self) -> None:
         self.history: list[dict[str, Any]] = []
+        self._shuffle_restore_order = None
         self.player = {
             "state": "playing",
             "progress": 68,
@@ -194,6 +196,31 @@ class PreviewState:
             "2026-09-01 14:00:01 INFO PREVIEW 示範資料已載入記憶體",
         ]
 
+    def set_shuffle(self, enabled: bool) -> None:
+        """Shuffle the demo queue once, then restore its saved order when disabled."""
+        queue = self.player["queue"]
+        enabled = bool(enabled)
+        if enabled:
+            if self.player["shuffle"]:
+                return
+            self._shuffle_restore_order = list(queue)
+            self.player["shuffle"] = True
+            random.shuffle(queue)
+            return
+
+        if not self.player["shuffle"]:
+            return
+
+        current_entries = list(queue)
+        saved_entries = self._shuffle_restore_order or []
+        current_entry_ids = {id(entry) for entry in current_entries}
+        saved_entry_ids = {id(entry) for entry in saved_entries}
+        queue[:] = [
+            entry for entry in saved_entries if id(entry) in current_entry_ids
+        ] + [entry for entry in current_entries if id(entry) not in saved_entry_ids]
+        self._shuffle_restore_order = None
+        self.player["shuffle"] = False
+
     def player_payload(self) -> dict[str, Any]:
         payload = copy.deepcopy(self.player)
         payload["can_previous"] = bool(self.history) or bool(
@@ -300,7 +327,7 @@ def create_preview_app() -> web.Application:
         elif action == "resume" and current:
             state.player["state"] = "playing"
         elif action == "shuffle":
-            state.player["shuffle"] = not state.player["shuffle"]
+            state.set_shuffle(not state.player["shuffle"])
         elif action in {"repeat_song", "repeat_all", "repeat_off"}:
             mode = action.removeprefix("repeat_")
             state.player["repeat_mode"] = mode
@@ -333,6 +360,35 @@ def create_preview_app() -> web.Application:
 
         return web.json_response(
             {"ok": True, "player": state.player_payload()}
+        )
+
+    async def queue_play(request: web.Request) -> web.Response:
+        body = await _json_body(request)
+        queue = state.player["queue"]
+        try:
+            index = int(body.get("index"))
+        except (TypeError, ValueError):
+            return _json_error("Queue index is outside the preview queue")
+        if not 0 <= index < len(queue):
+            return _json_error("Queue index is outside the preview queue")
+
+        current = state.player.get("current")
+        if current:
+            state.history.append(current)
+        selected = queue[index]
+        del queue[: index + 1]
+        state.player["current"] = selected
+        state.player["progress"] = 0
+        state.player["state"] = "playing"
+        state.player["repeat_song"] = False
+        if state.player["repeat_mode"] == "song":
+            state.player["repeat_mode"] = "off"
+        return web.json_response(
+            {
+                "ok": True,
+                "selected": copy.deepcopy(selected),
+                "player": state.player_payload(),
+            }
         )
 
     async def player_volume(request: web.Request) -> web.Response:
@@ -663,6 +719,7 @@ def create_preview_app() -> web.Application:
             web.post("/api/player/volume", player_volume),
             web.post("/api/player/seek", player_seek),
             web.post("/api/queue/add", queue_add),
+            web.post("/api/queue/play", queue_play),
             web.post("/api/queue/reorder", queue_reorder),
             web.delete("/api/queue/{index}", queue_delete),
             web.get("/api/playlists", playlists),

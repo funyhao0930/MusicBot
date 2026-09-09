@@ -185,6 +185,7 @@ class PublicWebUIAPITests(unittest.IsolatedAsyncioTestCase):
                 ("POST", "/api/player/volume"),
                 ("POST", "/api/player/seek"),
                 ("POST", "/api/queue/add"),
+                ("POST", "/api/queue/play"),
                 ("POST", "/api/queue/reorder"),
                 ("DELETE", "/api/queue/{index}"),
                 ("GET", "/api/playlists"),

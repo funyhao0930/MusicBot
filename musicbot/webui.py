@@ -51,6 +51,7 @@ def public_api_routes(controller: Any) -> list[Any]:
         web.post("/api/player/volume", controller._handle_player_volume),
         web.post("/api/player/seek", controller._handle_player_seek),
         web.post("/api/queue/add", controller._handle_queue_add),
+        web.post("/api/queue/play", controller._handle_queue_play),
         web.post("/api/queue/reorder", controller._handle_queue_reorder),
         web.delete("/api/queue/{index}", controller._handle_queue_delete),
         web.get("/api/playlists", controller._handle_playlists),
@@ -486,9 +487,7 @@ class MusicBotWebUI:
                     player.repeatsong = False
                     player.loopqueue = False
             elif action == "shuffle":
-                player.shuffle = not bool(getattr(player, "shuffle", False))
-                if player.shuffle:
-                    player.playlist.shuffle()
+                player.set_shuffle(not bool(getattr(player, "shuffle", False)))
             elif action == "clear":
                 player.playlist.clear()
             else:
@@ -611,6 +610,37 @@ class MusicBotWebUI:
 
         return web.json_response(
             {"ok": True, "queue": [entry_to_payload(e) for e in player.playlist.entries]}
+        )
+
+    async def _handle_queue_play(self, request: web.Request) -> web.Response:
+        try:
+            body = await self._json_body(request)
+            guild_id = self._guild_id_from(body.get("guild_id"))
+            player = self._player_for(guild_id)
+            selected = player.play_queue_index(int(body.get("index")))
+        except (TypeError, ValueError) as exc:
+            return self._error(str(exc))
+        except LookupError as exc:
+            return self._error(str(exc), status=404)
+        except RuntimeError as exc:
+            return self._error(str(exc), status=409)
+
+        player_payload = self._player_payload(guild_id, player)
+        if getattr(player, "current_entry", None) is not selected:
+            pending_entries = list(player.playlist.entries)
+            player_payload["current"] = entry_to_payload(selected)
+            player_payload["progress"] = 0
+            player_payload["state"] = "playing"
+            if pending_entries and pending_entries[0] is selected:
+                pending_entries = pending_entries[1:]
+            player_payload["queue"] = [entry_to_payload(e) for e in pending_entries]
+
+        return web.json_response(
+            {
+                "ok": True,
+                "selected": entry_to_payload(selected),
+                "player": player_payload,
+            }
         )
 
     async def _handle_queue_delete(self, request: web.Request) -> web.Response:

@@ -10,6 +10,7 @@ const state = {
   mutationBusy: false,
   scrubbing: false,
   draggingIndex: null,
+  suppressQueueClick: false,
   queueRenderKey: null,
   selectedQueueIndexes: new Set(),
   settings: [],
@@ -381,7 +382,7 @@ function renderQueue(queue) {
     row.draggable = !state.mutationBusy;
     row.dataset.index = index;
     const disabled = state.mutationBusy ? " disabled" : "";
-    row.innerHTML = `<input class="queue-select-input" type="checkbox" aria-label="選取第 ${index + 1} 首歌曲"${disabled}><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="queue-copy"><strong></strong><small></small></div><div class="queue-row-actions"><button class="queue-move-up icon-button" type="button" aria-label="向上移動" title="向上移動"${state.mutationBusy || index === 0 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.up}</button><button class="queue-move-down icon-button" type="button" aria-label="向下移動" title="向下移動"${state.mutationBusy || index === queue.length - 1 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.down}</button><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></div>`;
+    row.innerHTML = `<input class="queue-select-input" type="checkbox" aria-label="選取第 ${index + 1} 首歌曲"${disabled}><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><button class="queue-copy queue-play-target" type="button" aria-label="播放第 ${index + 1} 首：${entry.title}"${disabled}><strong></strong><small></small></button><div class="queue-row-actions"><button class="queue-move-up icon-button" type="button" aria-label="向上移動" title="向上移動"${state.mutationBusy || index === 0 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.up}</button><button class="queue-move-down icon-button" type="button" aria-label="向下移動" title="向下移動"${state.mutationBusy || index === queue.length - 1 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.down}</button><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></div>`;
     const checkbox = $(".queue-select-input", row);
     checkbox.checked = state.selectedQueueIndexes.has(index);
     checkbox.addEventListener("change", () => {
@@ -391,16 +392,48 @@ function renderQueue(queue) {
     });
     $("strong", row).textContent = entry.title;
     $("small", row).textContent = `${formatTime(entry.duration)} · ${entry.requested_by}`;
+    $(".queue-play-target", row).addEventListener("click", () => playQueueItem(index));
     $(".queue-move-up", row).addEventListener("click", () => reorderQueue(index, index - 1));
     $(".queue-move-down", row).addEventListener("click", () => reorderQueue(index, index + 1));
     $(".queue-remove", row).addEventListener("click", () => removeQueueItem(index, row));
-    row.addEventListener("dragstart", () => { state.draggingIndex = index; row.classList.add("is-dragging"); });
-    row.addEventListener("dragend", () => { state.draggingIndex = null; row.classList.remove("is-dragging"); });
-    row.addEventListener("dragover", event => event.preventDefault());
+    const isInteractiveTarget = target => Boolean(target?.closest?.("button, input, label, a, select"));
+    const playFromRow = event => {
+      if (state.suppressQueueClick || state.mutationBusy || isInteractiveTarget(event.target)) return;
+      playQueueItem(index);
+    };
+    row.addEventListener("click", playFromRow);
+    row.addEventListener("dragstart", event => {
+      state.draggingIndex = index;
+      state.suppressQueueClick = true;
+      event.dataTransfer?.setData("text/plain", String(index));
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      row.classList.add("is-dragging");
+    });
+    row.addEventListener("dragend", () => {
+      state.draggingIndex = null;
+      row.classList.remove("is-dragging");
+      clearQueueDropIndicators();
+      setTimeout(() => { state.suppressQueueClick = false; }, 0);
+    });
+    row.addEventListener("dragover", event => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      clearQueueDropIndicators();
+      const after = event.clientY >= row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
+      row.classList.add(after ? "is-drop-after" : "is-drop-before");
+    });
+    row.addEventListener("dragleave", event => {
+      if (!row.contains(event.relatedTarget)) row.classList.remove("is-drop-before", "is-drop-after");
+    });
     row.addEventListener("drop", async event => {
       event.preventDefault();
-      if (state.mutationBusy || state.draggingIndex === null || state.draggingIndex === index) return;
-      await reorderQueue(state.draggingIndex, index);
+      const source = state.draggingIndex;
+      const rect = row.getBoundingClientRect();
+      const insertSlot = index + (event.clientY >= rect.top + rect.height / 2 ? 1 : 0);
+      clearQueueDropIndicators();
+      if (state.mutationBusy || source === null) return;
+      const target = Math.max(0, Math.min(queue.length - 1, insertSlot - (source < insertSlot ? 1 : 0)));
+      if (source !== target) await reorderQueue(source, target);
     });
     return row;
   }));
@@ -421,7 +454,15 @@ function syncQueueRowControls(queue) {
     if (moveDown) moveDown.disabled = state.mutationBusy || index === queue.length - 1;
     const remove = $(".queue-remove", row);
     if (remove) remove.disabled = state.mutationBusy;
+    const playTarget = $(".queue-play-target", row);
+    if (playTarget) playTarget.disabled = state.mutationBusy;
   });
+}
+
+function clearQueueDropIndicators() {
+  const queueList = $("#queue-list");
+  if (!queueList?.querySelectorAll) return;
+  $$(".queue-item", queueList).forEach(row => row.classList.remove("is-drop-before", "is-drop-after"));
 }
 
 async function submitQueuePlaylistBatch(name) {
@@ -565,6 +606,23 @@ async function reorderQueue(source, target) {
       renderQueue(result.queue);
     } catch (error) {
       renderQueue(state.player?.queue || []);
+      toast(error.message, "error");
+    }
+  });
+}
+
+async function playQueueItem(index) {
+  if (!state.guildId) return;
+  return runMutation(async () => {
+    try {
+      const result = await api("/api/queue/play", {
+        method: "POST",
+        body: { guild_id: state.guildId, index },
+      });
+      clearQueueSelection();
+      renderPlayer(result.player);
+      toast(`正在播放：${result.selected.title}`);
+    } catch (error) {
       toast(error.message, "error");
     }
   });

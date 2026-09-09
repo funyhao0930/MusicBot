@@ -201,8 +201,29 @@ class _FakePlayer:
         self.repeatsong = False
         self.loopqueue = False
         self.shuffle = False
+        self._shuffle_restore_order = None
         self.can_previous = False
         self.calls = []
+
+    def set_shuffle(self, enabled):
+        self.shuffle = enabled
+        if enabled:
+            self._shuffle_restore_order = list(self.playlist.entries)
+            self.playlist.shuffle()
+            return
+
+        original_entries = [
+            entry
+            for entry in self._shuffle_restore_order or []
+            if entry in self.playlist.entries
+        ]
+        original_entry_ids = {id(entry) for entry in self._shuffle_restore_order or []}
+        added_entries = [
+            entry for entry in self.playlist.entries if id(entry) not in original_entry_ids
+        ]
+        self.playlist.entries.clear()
+        self.playlist.entries.extend(original_entries + added_entries)
+        self._shuffle_restore_order = None
 
     def pause(self):
         self.calls.append("pause")
@@ -216,6 +237,17 @@ class _FakePlayer:
 
     def skip(self):
         self.calls.append("skip")
+
+    def play_queue_index(self, index):
+        if not 0 <= index < len(self.playlist.entries):
+            raise ValueError("Queue index is outside the queue")
+        for _ in range(index):
+            self.playlist.entries.popleft()
+        selected = self.playlist.entries.popleft()
+        self.current_entry = selected
+        self.repeatsong = False
+        self.calls.append(("play_queue_index", index))
+        return selected
 
     def stop(self):
         self.calls.append("stop")
@@ -387,7 +419,7 @@ class WebUIAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.player.calls[-1], "previous")
         self.assertTrue(payload["player"]["can_previous"])
 
-    async def test_shuffle_action_toggles_persistent_player_state(self) -> None:
+    async def test_shuffle_action_shuffles_once_then_restores_the_queue(self) -> None:
         response = await self.client.post(
             "/api/player/action",
             json={"guild_id": 1, "action": "shuffle"},
@@ -397,6 +429,10 @@ class WebUIAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.player.shuffle)
         self.assertEqual(self.player.playlist.shuffle_calls, 1)
         self.assertTrue((await response.json())["player"]["shuffle"])
+        self.assertEqual(
+            [entry.title for entry in self.player.playlist.entries],
+            ["After Rain", "Night Drive"],
+        )
 
         response = await self.client.post(
             "/api/player/action",
@@ -406,6 +442,10 @@ class WebUIAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         self.assertFalse(self.player.shuffle)
         self.assertEqual(self.player.playlist.shuffle_calls, 1)
+        self.assertEqual(
+            [entry.title for entry in self.player.playlist.entries],
+            ["Night Drive", "After Rain"],
+        )
 
     async def test_player_seek_moves_to_requested_position(self) -> None:
         response = await self.client.post(
@@ -433,6 +473,27 @@ class WebUIAPITests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response.status, 200)
         self.assertEqual(self.player.playlist.entries[0].title, "After Rain")
+
+    async def test_queue_play_jumps_to_selected_entry_and_drops_earlier_items(self) -> None:
+        response = await self.client.post(
+            "/api/queue/play",
+            json={"guild_id": 1, "index": 1},
+            headers=self._write_headers(),
+        )
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(self.player.calls[-1], ("play_queue_index", 1))
+        self.assertEqual(payload["selected"]["title"], "After Rain")
+        self.assertEqual(payload["player"]["current"]["title"], "After Rain")
+        self.assertEqual(payload["player"]["queue"], [])
+
+    async def test_queue_play_rejects_an_index_outside_the_queue(self) -> None:
+        response = await self.client.post(
+            "/api/queue/play",
+            json={"guild_id": 1, "index": 99},
+            headers=self._write_headers(),
+        )
+        self.assertEqual(response.status, 400)
 
     async def test_write_endpoint_rejects_missing_csrf(self) -> None:
         response = await self.client.post(

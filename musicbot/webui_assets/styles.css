@@ -164,12 +164,17 @@ input[type="text"]:focus, input[type="search"]:focus { border-color: rgba(139,92
 .queue-selected-count { flex: 1; color: var(--muted); font-size: 11px; }
 .queue-bulk-actions .button { padding: 7px 10px; font-size: 11px; }
 .queue-list { min-height: 0; overflow-x: hidden; overflow-y: auto; display: grid; align-content: start; }
-.queue-item { display: grid; grid-template-columns: 22px 38px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 13px 6px; border-bottom: 1px solid var(--line); animation: queue-in var(--motion-page) var(--ease-out) both; transition: opacity var(--motion-ui), transform var(--motion-ui), background var(--motion-ui), max-height var(--motion-ui), padding var(--motion-ui); }
+.queue-item { position: relative; display: grid; grid-template-columns: 22px 38px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 13px 6px; border-bottom: 1px solid var(--line); cursor: grab; animation: queue-in var(--motion-page) var(--ease-out) both; transition: opacity var(--motion-ui), transform var(--motion-ui), background var(--motion-ui), max-height var(--motion-ui), padding var(--motion-ui); }
+.queue-item:hover:not(.is-dragging), .queue-item:focus-visible { background: rgba(139,92,246,.075); border-radius: 12px; }
+.queue-item:focus-visible { outline: 2px solid rgba(167,139,250,.9); outline-offset: -2px; }
+.queue-item::before, .queue-item::after { content: ""; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 999px; background: var(--violet); box-shadow: 0 0 12px rgba(139,92,246,.75); opacity: 0; transform: scaleX(.82); transition: opacity var(--motion-fast), transform var(--motion-fast); pointer-events: none; }
+.queue-item::before { top: -1px; }.queue-item::after { bottom: -1px; }
+.queue-item.is-drop-before::before, .queue-item.is-drop-after::after { opacity: 1; transform: scaleX(1); }
 @keyframes queue-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
 .queue-item.is-removing { opacity: 0; transform: translateX(22px); max-height: 0; padding-block: 0; overflow: hidden; }
-.queue-item.is-dragging { opacity: .75; transform: scale(1.02); background: rgba(139,92,246,.12); border-radius: 12px; }
+.queue-item.is-dragging { opacity: .6; transform: scale(.985); background: rgba(139,92,246,.12); border-radius: 12px; cursor: grabbing; }
 .queue-index { width: 30px; height: 30px; display: grid; place-items: center; color: var(--muted); font: 11px "Cascadia Code", monospace; border: 1px solid var(--line); border-radius: 9px; }
-.queue-copy { min-width: 0; }.queue-copy strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }.queue-copy small { color: var(--muted); }
+.queue-copy { min-width: 0; padding: 4px 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }.queue-copy strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }.queue-copy small { display: block; color: var(--muted); }.queue-copy:focus-visible { outline: 2px solid rgba(167,139,250,.9); outline-offset: 3px; border-radius: 4px; }
 .queue-row-actions, .playlist-track-actions { display: flex; align-items: center; gap: 6px; }
 .icon-button { width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 9px; color: #d8d9e4; background: rgba(255,255,255,.035); display: grid; place-items: center; transition: color var(--motion-ui), background var(--motion-ui), border-color var(--motion-ui), transform var(--motion-fast); }
 .icon-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }

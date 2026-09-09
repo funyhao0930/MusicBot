@@ -1,6 +1,7 @@
 import argparse
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -94,6 +95,58 @@ class WebUIPreviewTests(unittest.IsolatedAsyncioTestCase):
 
         logs = await (await self.client.get("/api/logs?limit=50")).json()
         self.assertTrue(any("PREVIEW" in line for line in logs["lines"]))
+
+    async def test_preview_shuffle_restores_original_queue_and_keeps_new_entries(self):
+        with patch("random.shuffle", side_effect=lambda entries: entries.reverse()):
+            enabled = await (
+                await self.client.post(
+                    "/api/player/action",
+                    json={"guild_id": "preview", "action": "shuffle"},
+                )
+            ).json()
+
+            self.assertTrue(enabled["player"]["shuffle"])
+            self.assertEqual(
+                [entry["title"] for entry in enabled["player"]["queue"]],
+                ["Starlit Signal", "Midnight Current", "Violet Afterglow"],
+            )
+
+            await self.client.post(
+                "/api/queue/add",
+                json={"guild_id": "preview", "query": "新的預覽歌曲"},
+            )
+            disabled = await (
+                await self.client.post(
+                    "/api/player/action",
+                    json={"guild_id": "preview", "action": "shuffle"},
+                )
+            ).json()
+
+        self.assertFalse(disabled["player"]["shuffle"])
+        self.assertEqual(
+            [entry["title"] for entry in disabled["player"]["queue"]],
+            [
+                "Violet Afterglow",
+                "Midnight Current",
+                "Starlit Signal",
+                "新的預覽歌曲",
+            ],
+        )
+
+    async def test_preview_queue_click_jumps_to_selected_track(self):
+        response = await self.client.post(
+            "/api/queue/play",
+            json={"guild_id": "preview", "index": 1},
+        )
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["selected"]["title"], "Midnight Current")
+        self.assertEqual(payload["player"]["current"]["title"], "Midnight Current")
+        self.assertEqual(
+            [entry["title"] for entry in payload["player"]["queue"]],
+            ["Starlit Signal"],
+        )
+        self.assertEqual(payload["player"]["progress"], 0)
 
     async def test_invalid_playlist_action_does_not_create_a_playlist(self):
         before = await (await self.client.get("/api/playlists")).json()

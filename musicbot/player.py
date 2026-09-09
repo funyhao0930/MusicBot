@@ -121,6 +121,7 @@ class MusicPlayer(EventEmitter, Serializable):
         self.loopqueue: bool = False
         self.repeatsong: bool = False
         self.shuffle: bool = False
+        self._shuffle_restore_order: Optional[List[EntryTypes]] = None
         self.voice_client: VoiceClient = voice_client
         self.playlist: "Playlist" = playlist
         self.autoplaylist: List[str] = []
@@ -165,9 +166,6 @@ class MusicPlayer(EventEmitter, Serializable):
         """
         Event dispatched by Playlist when an entry is added to the queue.
         """
-        if self.shuffle and len(playlist.entries) > 1:
-            playlist.shuffle()
-
         self.emit(
             "entry-added",
             player=self,
@@ -175,6 +173,36 @@ class MusicPlayer(EventEmitter, Serializable):
             entry=entry,
             defer_serialize=defer_serialize,
         )
+
+    def set_shuffle(self, enabled: bool) -> None:
+        """Shuffle the pending queue once, then restore its saved order when disabled."""
+        enabled = bool(enabled)
+        if enabled:
+            if self.shuffle:
+                return
+            self._shuffle_restore_order = list(self.playlist.entries)
+            self.shuffle = True
+            if len(self.playlist.entries) > 1:
+                self.playlist.shuffle()
+            return
+
+        if not self.shuffle:
+            return
+
+        current_entries = list(self.playlist.entries)
+        saved_entries = getattr(self, "_shuffle_restore_order", None) or []
+        current_entry_ids = {id(entry) for entry in current_entries}
+        saved_entry_ids = {id(entry) for entry in saved_entries}
+        restored_entries = [
+            entry for entry in saved_entries if id(entry) in current_entry_ids
+        ]
+        added_entries = [
+            entry for entry in current_entries if id(entry) not in saved_entry_ids
+        ]
+        self.playlist.entries.clear()
+        self.playlist.entries.extend(restored_entries + added_entries)
+        self._shuffle_restore_order = None
+        self.shuffle = False
 
     def on_entry_failed(self, entry: EntryTypes, error: Exception) -> None:
         """
@@ -188,6 +216,30 @@ class MusicPlayer(EventEmitter, Serializable):
             "MusicPlayer.skip() is called:  %s", repr(self)
         )
         self._kill_current_player()
+
+    def play_queue_index(self, index: int) -> EntryTypes:
+        """Jump to a pending queue entry and continue from that point."""
+        queue_length = len(self.playlist.entries)
+        if not 0 <= index < queue_length:
+            raise ValueError("Queue index is outside the queue")
+
+        original_entries = list(self.playlist.entries)
+        for _ in range(index):
+            self.playlist.entries.popleft()
+        selected_entry = self.playlist.entries[0]
+
+        if self._current_entry is None:
+            self.play()
+            return selected_entry
+
+        previous_repeat_song = self.repeatsong
+        self.repeatsong = False
+        if not self._kill_current_player():
+            self.playlist.entries.clear()
+            self.playlist.entries.extend(original_entries)
+            self.repeatsong = previous_repeat_song
+            raise RuntimeError("Playback source is not available for queue selection")
+        return selected_entry
 
     @property
     def can_previous(self) -> bool:
@@ -359,8 +411,6 @@ class MusicPlayer(EventEmitter, Serializable):
             self.playlist.entries.appendleft(entry)
         elif self.loopqueue:
             self.playlist.entries.append(entry)
-            if self.shuffle:
-                self.playlist.shuffle()
 
         # TODO: investigate if this is cruft code or not.
         if self._current_player:
