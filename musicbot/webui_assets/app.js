@@ -51,6 +51,81 @@ const QUEUE_ACTION_ICONS = {
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
+const SPOTLIGHT_SELECTOR = ".now-playing, .queue-panel, .settings-group, .playlist-workbench";
+
+function prefersReducedMotion() {
+  return Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+}
+
+function replayAnimation(node, className) {
+  if (!node?.classList) return;
+  node.classList.remove(className);
+  void node.offsetWidth;
+  node.classList.add(className);
+}
+
+function positionNavIndicator() {
+  const nav = $("#main-nav");
+  if (typeof nav?.querySelector !== "function") return;
+  const active = $(".nav-item.is-active", nav);
+  const indicator = $(".nav-indicator", nav);
+  if (!active || !indicator?.style) return;
+  indicator.style.setProperty("--ind-x", `${active.offsetLeft}px`);
+  indicator.style.setProperty("--ind-y", `${active.offsetTop}px`);
+  indicator.style.setProperty("--ind-w", `${active.offsetWidth}px`);
+  indicator.style.setProperty("--ind-h", `${active.offsetHeight}px`);
+  if (!indicator.classList.contains("is-ready")) requestAnimationFrame(() => indicator.classList.add("is-ready"));
+}
+
+function setupNavIndicator() {
+  const nav = $("#main-nav");
+  if (typeof nav?.querySelector !== "function" || typeof nav.prepend !== "function" || $(".nav-indicator", nav)) return;
+  const indicator = document.createElement("span");
+  indicator.className = "nav-indicator";
+  indicator.setAttribute("aria-hidden", "true");
+  nav.prepend(indicator);
+  nav.classList.add("has-indicator");
+  // nav items rise in on load; measure after they settle
+  setTimeout(positionNavIndicator, 650);
+  positionNavIndicator();
+}
+
+function setupSpotlight() {
+  document.addEventListener("pointermove", event => {
+    const card = event.target?.closest?.(SPOTLIGHT_SELECTOR);
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    card.style.setProperty("--mx", `${event.clientX - rect.left}px`);
+    card.style.setProperty("--my", `${event.clientY - rect.top}px`);
+  }, { passive: true });
+}
+
+function captureRowRects(list) {
+  const rects = new Map();
+  if (typeof list?.querySelectorAll !== "function") return rects;
+  list.querySelectorAll(".queue-item").forEach(row => {
+    if (row.dataset?.key) rects.set(row.dataset.key, row.getBoundingClientRect());
+  });
+  return rects;
+}
+
+// FLIP: rows that survive a rebuild glide from their old slot instead of re-entering
+function animateQueueReflow(rows, previousRects) {
+  if (!previousRects.size || prefersReducedMotion()) return;
+  rows.forEach(row => {
+    const before = previousRects.get(row.dataset?.key);
+    if (!before || typeof row.animate !== "function") return;
+    row.classList.add("is-settled");
+    const after = row.getBoundingClientRect();
+    const dy = before.top - after.top;
+    if (Math.abs(dy) < 1) return;
+    row.animate(
+      [{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }],
+      { duration: 520, easing: "cubic-bezier(.22, 1, .36, 1)" },
+    );
+  });
+}
+
 const pageMeta = {
   dashboard: ["NOW PLAYING", "今晚播什麼？"],
   playlists: ["AUTOPLAY", "播放清單"],
@@ -145,8 +220,11 @@ function switchPage(name) {
   setTimeout(() => current?.classList.remove("is-leaving"), 140);
   next.classList.add("is-active");
   $$(".nav-item").forEach(item => item.classList.toggle("is-active", item.dataset.page === name));
+  positionNavIndicator();
   $("#page-eyebrow").textContent = pageMeta[name][0];
   $("#page-title").textContent = pageMeta[name][1];
+  replayAnimation($("#page-eyebrow"), "is-swapping");
+  replayAnimation($("#page-title"), "is-swapping");
   if (name === "playlists") loadPlaylists();
   if (name === "settings") loadSettings();
   if (name === "logs") loadLogs();
@@ -193,6 +271,7 @@ function setArtwork(entry, changed) {
       };
       image.src = entry.thumbnail;
       image.alt = `${entry.title} 封面`;
+      $("#art-stage")?.style?.setProperty?.("--art-image", `url(${JSON.stringify(entry.thumbnail)})`);
       image.hidden = true;
       fallback.hidden = false;
     } else {
@@ -201,6 +280,7 @@ function setArtwork(entry, changed) {
       image.removeAttribute("src");
       image.hidden = true;
       fallback.hidden = false;
+      $("#art-stage")?.style?.removeProperty?.("--art-image");
     }
     art.classList.remove("is-changing");
   }, changed ? 160 : 0);
@@ -234,7 +314,9 @@ function setTrackTitle(value) {
   const nextTitle = value || "尚未播放歌曲";
   if (title.textContent === nextTitle) return;
 
+  const hadTitle = Boolean(title.textContent);
   title.textContent = nextTitle;
+  if (hadTitle) replayAnimation($(".track-copy"), "is-entering");
   viewport.classList.remove("is-overflowing");
   requestAnimationFrame(updateTrackTitleOverflow);
 }
@@ -312,6 +394,7 @@ function renderPlayer(player) {
 
   const volume = Math.round((player?.volume ?? .25) * 100);
   $("#volume-range").value = volume;
+  $("#volume-range").style?.setProperty?.("--range-fill", `${volume}%`);
   $("#volume-output").value = `${volume}%`;
   renderQueue(player?.queue || []);
 }
@@ -376,11 +459,17 @@ function renderQueue(queue) {
   state.selectedQueueIndexes.clear();
   state.queueRenderKey = renderKey;
 
-  list.replaceChildren(...queue.map((entry, index) => {
+  const previousRects = captureRowRects(list);
+  const keyCounts = {};
+  const rows = queue.map((entry, index) => {
     const row = document.createElement("div");
     row.className = "queue-item";
     row.draggable = !state.mutationBusy;
     row.dataset.index = index;
+    const baseKey = `${entry.url || ""}\u0000${entry.title || ""}`;
+    keyCounts[baseKey] = (keyCounts[baseKey] || 0) + 1;
+    row.dataset.key = `${baseKey}\u0000${keyCounts[baseKey]}`;
+    row.style?.setProperty?.("--i", String(index));
     const disabled = state.mutationBusy ? " disabled" : "";
     row.innerHTML = `<input class="queue-select-input" type="checkbox" aria-label="選取第 ${index + 1} 首歌曲"${disabled}><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><button class="queue-copy queue-play-target" type="button" aria-label="播放第 ${index + 1} 首：${entry.title}"${disabled}><strong></strong><small></small></button><div class="queue-row-actions"><button class="queue-move-up icon-button" type="button" aria-label="向上移動" title="向上移動"${state.mutationBusy || index === 0 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.up}</button><button class="queue-move-down icon-button" type="button" aria-label="向下移動" title="向下移動"${state.mutationBusy || index === queue.length - 1 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.down}</button><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></div>`;
     const checkbox = $(".queue-select-input", row);
@@ -436,7 +525,9 @@ function renderQueue(queue) {
       if (source !== target) await reorderQueue(source, target);
     });
     return row;
-  }));
+  });
+  list.replaceChildren(...rows);
+  animateQueueReflow(rows, previousRects);
   syncQueueRowControls(queue);
   syncQueueSelectionControls(queue);
 }
@@ -648,7 +739,9 @@ function animateProgress() {
   if (!state.scrubbing && state.player?.state === "playing" && state.player.current?.duration) {
     const elapsed = (performance.now() - state.lastSync) / 1000;
     const progress = Math.min(state.player.progress + elapsed, state.player.current.duration);
-    $("#progress-range").value = progress;
+    const range = $("#progress-range");
+    range.value = progress;
+    range.style?.setProperty?.("--progress-fill", `${Math.min(100, progress / state.player.current.duration * 100)}%`);
     $("#time-current").textContent = formatTime(progress);
   }
   requestAnimationFrame(animateProgress);
@@ -1134,7 +1227,10 @@ document.addEventListener("DOMContentLoaded", () => {
     state.scrubbing = false;
     renderPlayer(state.player);
   });
-  $("#volume-range").addEventListener("input", event => { $("#volume-output").value = `${event.target.value}%`; });
+  $("#volume-range").addEventListener("input", event => {
+    $("#volume-output").value = `${event.target.value}%`;
+    event.target.style.setProperty("--range-fill", `${event.target.value}%`);
+  });
   $("#volume-range").addEventListener("change", event => { void setPlayerVolume(Number(event.target.value) / 100); });
   $("#add-track-form").addEventListener("submit", event => {
     event.preventDefault();
@@ -1165,7 +1261,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#restart-full").addEventListener("click", () => requestRestart("full"));
   $("#permission-add-group").addEventListener("click", () => permissionGroupAction("create"));
   $("#refresh-logs").addEventListener("click", loadLogs); $("#log-level").addEventListener("change", renderLogs); $("#log-search").addEventListener("input", renderLogs);
-  window.addEventListener?.("resize", () => requestAnimationFrame(updateTrackTitleOverflow));
+  setupNavIndicator();
+  setupSpotlight();
+  window.addEventListener?.("resize", () => requestAnimationFrame(() => { updateTrackTitleOverflow(); positionNavIndicator(); }));
   requestAnimationFrame(updateTrackTitleOverflow);
   refreshSnapshot(); setInterval(refreshSnapshot, 2000); requestAnimationFrame(animateProgress);
 });
