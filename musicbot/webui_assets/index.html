@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>糖音機 控制中心</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=13">
+  <link rel="stylesheet" href="/assets/styles.css?v=15">
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -55,12 +55,16 @@
 
       <section class="page is-active" data-page-panel="dashboard">
         <div class="dashboard-grid">
-          <section class="now-playing" aria-labelledby="now-playing-heading">
+          <section class="now-playing" id="now-playing" aria-labelledby="now-playing-heading">
+            <div class="np-glow" aria-hidden="true"></div>
             <div class="art-stage" id="art-stage">
               <div class="audio-halo" aria-hidden="true"></div>
-              <div class="album-art" id="album-art">
-                <img id="album-image" alt="" hidden>
-                <div class="album-fallback" id="album-fallback"><span>NO</span><span>ARTWORK</span></div>
+              <div class="art-tilt" id="art-tilt">
+                <div class="album-art" id="album-art">
+                  <img id="album-image" alt="" hidden>
+                  <div class="album-fallback" id="album-fallback"><span>NO</span><span>ARTWORK</span></div>
+                  <div class="art-sheen" aria-hidden="true"></div>
+                </div>
               </div>
               <div class="wave-strip" aria-hidden="true">
                 <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
@@ -76,35 +80,43 @@
             </div>
 
             <div class="progress-block">
-              <input id="progress-range" type="range" min="0" max="100" step="0.1" value="0" disabled aria-label="播放進度">
+              <div class="progress-track" id="progress-track">
+                <div class="progress-rail" aria-hidden="true"><div class="progress-fill"><span class="progress-shine"></span></div></div>
+                <span class="progress-thumb" aria-hidden="true"></span>
+                <span class="progress-tip" id="progress-tip" aria-hidden="true">0:00</span>
+                <input id="progress-range" type="range" min="0" max="100" step="0.1" value="0" disabled aria-label="播放進度">
+              </div>
               <div class="time-row"><span id="time-current">0:00</span><span id="time-total">0:00</span></div>
             </div>
 
             <div class="transport" aria-label="播放控制">
               <div class="transport-actions">
-                <button class="transport-icon" id="transport-shuffle" type="button" data-action="shuffle" aria-pressed="false" aria-label="關閉隨機播放" title="隨機播放">
-                  <img src="/assets/icon-shuffle.svg" alt="">
-                  <img class="transport-state-dot" src="/assets/icon-state-dot.svg" alt="" hidden>
+                <button class="transport-icon transport-shuffle" id="transport-shuffle" type="button" data-action="shuffle" aria-pressed="false" aria-label="關閉隨機播放" title="隨機播放">
+                  <svg class="transport-glyph" viewBox="0 0 24 24" aria-hidden="true"><g class="sh-a"><path class="ln" d="M4 20 21 3"/><path class="ar" d="M16 3h5v5"/></g><g class="sh-b"><path class="ln" d="M4 4l5 5M15 15l6 6"/><path class="ar" d="M21 16v5h-5"/></g></svg>
+                  <span class="transport-state-dot" hidden></span>
                 </button>
-                <button class="transport-icon" id="transport-previous" type="button" data-action="previous" aria-label="上一首" title="上一首" disabled>
-                  <img src="/assets/icon-skip-previous.svg" alt="">
+                <button class="transport-icon transport-skip transport-prev" id="transport-previous" type="button" data-action="previous" aria-label="上一首" title="上一首" disabled>
+                  <svg class="transport-glyph" viewBox="0 0 24 24" aria-hidden="true"><path class="fill echo" d="M18.5 19.5 8.5 12l10-7.5z"/><path class="fill tri" d="M18.5 19.5 8.5 12l10-7.5z"/><path class="bar" d="M5.5 5v14"/></svg>
                 </button>
-                <button class="transport-main" id="play-toggle" type="button" data-action="pause" aria-label="暫停" title="暫停">
-                  <img id="play-toggle-icon" src="/assets/icon-pause.svg" alt="">
+                <span class="play-magnet" id="play-magnet">
+                  <button class="transport-main" id="play-toggle" type="button" data-action="pause" aria-label="暫停" title="暫停">
+                    <svg class="pp" viewBox="0 0 24 24" aria-hidden="true"><path class="pp-l" d="M7 4.5 L12.5 8 L12.5 16 L7 19.5 Z"/><path class="pp-r" d="M12.5 8 L19.5 12 L19.5 12 L12.5 16 Z"/></svg>
+                  </button>
+                </span>
+                <button class="transport-icon transport-skip transport-next" id="transport-next" type="button" data-action="skip" aria-label="下一首" title="下一首">
+                  <svg class="transport-glyph" viewBox="0 0 24 24" aria-hidden="true"><path class="fill echo" d="M5.5 4.5l10 7.5-10 7.5z"/><path class="fill tri" d="M5.5 4.5l10 7.5-10 7.5z"/><path class="bar" d="M18.5 5v14"/></svg>
                 </button>
-                <button class="transport-icon" id="transport-next" type="button" data-action="skip" aria-label="下一首" title="下一首">
-                  <img src="/assets/icon-skip-next.svg" alt="">
-                </button>
-                <button class="transport-icon" id="transport-repeat" type="button" data-action="repeat_song" aria-pressed="false" aria-label="關閉循環，點擊切換循環模式" title="循環模式">
-                  <img id="repeat-icon" src="/assets/icon-repeat.svg" alt="">
-                  <img class="transport-state-dot" id="repeat-state-dot" src="/assets/icon-state-dot.svg" alt="" hidden>
+                <button class="transport-icon transport-repeat" id="transport-repeat" type="button" data-action="repeat_song" aria-pressed="false" aria-label="關閉循環，點擊切換循環模式" title="循環模式">
+                  <svg class="transport-glyph" viewBox="0 0 24 24" aria-hidden="true"><g class="rp-a"><path class="ln" d="M3 11V9a3 3 0 0 1 3-3h15"/><path class="ar" d="M17 2l4 4-4 4"/></g><g class="rp-b"><path class="ln" d="M21 13v2a3 3 0 0 1-3 3H3"/><path class="ar" d="M7 22l-4-4 4-4"/></g></svg>
+                  <span class="transport-state-dot" id="repeat-state-dot" hidden></span>
+                  <span class="repeat-one-badge" id="repeat-one-badge" hidden>1</span>
                 </button>
               </div>
               <div class="transport-secondary">
                 <button class="transport-stop" id="transport-stop" type="button" data-action="stop" aria-label="停止播放" title="停止播放"><img src="/assets/icon-stop.svg" alt=""><span>停止</span></button>
               </div>
               <div class="volume-row">
-                <label for="volume-range">音量 <output id="volume-output">25%</output></label>
+                <label for="volume-range"><span class="volume-icon lv-1" id="volume-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="body" d="M11 5 6 9H3v6h3l5 4z"/><path class="w1" d="M15.5 8.5a5 5 0 0 1 0 7"/><path class="w2" d="M18.5 5.5a9.5 9.5 0 0 1 0 13"/></svg></span>音量 <output id="volume-output">25%</output></label>
                 <input id="volume-range" type="range" min="1" max="100" value="25" data-mutation-control>
               </div>
             </div>
@@ -241,6 +253,6 @@
     <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=17" defer></script>
+  <script src="/assets/app.js?v=19" defer></script>
 </body>
 </html>

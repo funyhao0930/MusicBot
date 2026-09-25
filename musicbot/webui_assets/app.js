@@ -5,6 +5,7 @@ const state = {
   guildId: null,
   player: null,
   currentUrl: "",
+  skipDirection: 1,
   lastSync: 0,
   connected: false,
   mutationBusy: false,
@@ -35,18 +36,21 @@ const REPEAT_NEXT_ACTIONS = {
   "song": "repeat_all",
   "all": "repeat_off",
 };
-const CONTROL_ICONS = {
-  play: "/assets/icon-play.svg",
-  pause: "/assets/icon-pause.svg",
-  repeat: "/assets/icon-repeat.svg",
-  repeat_one: "/assets/icon-repeat-one.svg",
+const PLAY_PAUSE_PATHS = {
+  play: ["M7 4.5 L12.5 8 L12.5 16 L7 19.5 Z", "M12.5 8 L19.5 12 L19.5 12 L12.5 16 Z"],
+  pause: ["M6.5 5 L10.2 5 L10.2 19 L6.5 19 Z", "M13.8 5 L17.5 5 L17.5 19 L13.8 19 Z"],
 };
+const TITLE_ANIMATED_CHARS = 48;
+const ADD_DONE_ICON = '<svg class="done-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const QUEUE_ACTION_ICONS = {
   up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>',
   remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6M8 6V4h8v2M10 11v6M14 11v6"/></svg>',
 };
+const QUEUE_SCROLL_EDGE = 64;
+let queueDragPoint = null;
+let queueDragFrame = null;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -100,6 +104,79 @@ function setupSpotlight() {
   }, { passive: true });
 }
 
+// cover follows the pointer in 3D with a moving highlight
+function setupArtTilt() {
+  const stage = $("#art-stage");
+  if (typeof stage?.addEventListener !== "function" || !stage.style?.setProperty) return;
+  stage.addEventListener("pointermove", event => {
+    if (prefersReducedMotion() || event.pointerType === "touch") return;
+    const rect = stage.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    stage.classList.add("is-tracking");
+    stage.style.setProperty("--tilt-x", `${((.5 - y) * 16).toFixed(2)}deg`);
+    stage.style.setProperty("--tilt-y", `${((x - .5) * 16).toFixed(2)}deg`);
+    stage.style.setProperty("--sheen-x", `${Math.round(x * 100)}%`);
+    stage.style.setProperty("--sheen-y", `${Math.round(y * 100)}%`);
+  }, { passive: true });
+  stage.addEventListener("pointerleave", () => {
+    stage.classList.remove("is-tracking");
+    ["--tilt-x", "--tilt-y", "--sheen-x", "--sheen-y"].forEach(name => stage.style.removeProperty(name));
+  });
+}
+
+// the play button leans a few pixels toward the pointer
+function setupPlayMagnet() {
+  const magnet = $("#play-magnet");
+  const button = $("#play-toggle");
+  if (typeof magnet?.addEventListener !== "function" || !button?.style?.setProperty) return;
+  magnet.addEventListener("pointermove", event => {
+    if (prefersReducedMotion() || event.pointerType === "touch" || button.disabled) return;
+    const rect = magnet.getBoundingClientRect();
+    button.classList.add("is-magnet");
+    button.style.setProperty("--mag-x", `${(((event.clientX - rect.left) / rect.width - .5) * 14).toFixed(1)}px`);
+    button.style.setProperty("--mag-y", `${(((event.clientY - rect.top) / rect.height - .5) * 14).toFixed(1)}px`);
+  }, { passive: true });
+  magnet.addEventListener("pointerleave", () => {
+    button.classList.remove("is-magnet");
+    button.style.removeProperty("--mag-x");
+    button.style.removeProperty("--mag-y");
+  });
+}
+
+function kickTransportGlyph(button) {
+  const glyph = button?.querySelector?.(".transport-glyph");
+  if (glyph && !prefersReducedMotion()) replayAnimation(glyph, "is-kicked");
+}
+
+function setProgressVisual(seconds, total) {
+  const percent = total > 0 ? Math.min(100, Math.max(0, seconds / total * 100)) : 0;
+  $("#progress-track")?.style?.setProperty?.("--progress-fill", `${percent}%`);
+  const tip = $("#progress-tip");
+  if (tip) tip.textContent = formatTime(seconds);
+}
+
+function setVolumeVisual(volume) {
+  const level = volume <= 0 ? 0 : volume <= 40 ? 1 : 2;
+  const icon = $("#volume-icon");
+  if (typeof icon?.classList?.add !== "function") return;
+  icon.classList.remove("lv-0", "lv-1", "lv-2");
+  icon.classList.add(`lv-${level}`);
+}
+
+function flashAddButton(form) {
+  const button = form?.querySelector?.('button[type="submit"]');
+  if (!button || typeof button.classList?.add !== "function") return;
+  clearTimeout(button.doneTimer);
+  if (!button.dataset.label) button.dataset.label = button.textContent;
+  button.classList.add("is-done");
+  button.innerHTML = `${ADD_DONE_ICON}已加入`;
+  button.doneTimer = setTimeout(() => {
+    button.classList.remove("is-done");
+    button.textContent = button.dataset.label;
+  }, 1400);
+}
+
 function captureRowRects(list) {
   const rects = new Map();
   if (typeof list?.querySelectorAll !== "function") return rects;
@@ -114,7 +191,11 @@ function animateQueueReflow(rows, previousRects) {
   if (!previousRects.size || prefersReducedMotion()) return;
   rows.forEach(row => {
     const before = previousRects.get(row.dataset?.key);
-    if (!before || typeof row.animate !== "function") return;
+    if (!before) {
+      row.classList.add("is-new");
+      return;
+    }
+    if (typeof row.animate !== "function") return;
     row.classList.add("is-settled");
     const after = row.getBoundingClientRect();
     const dy = before.top - after.top;
@@ -143,6 +224,9 @@ function toast(message, type = "info") {
   const node = document.createElement("div");
   node.className = `toast${type === "error" ? " is-error" : ""}`;
   node.textContent = message;
+  const bar = document.createElement("span");
+  bar.className = "toast-bar";
+  node.append(bar);
   $("#toast-region").append(node);
   setTimeout(() => {
     node.classList.add("is-leaving");
@@ -255,7 +339,11 @@ function renderGuilds(guilds) {
 
 function setArtwork(entry, changed) {
   const art = $("#album-art");
-  if (changed) art.classList.add("is-changing");
+  const back = state.skipDirection < 0;
+  if (changed) {
+    art.classList.toggle("is-back", back);
+    art.classList.add("is-changing");
+  }
   setTimeout(() => {
     const image = $("#album-image");
     const fallback = $("#album-fallback");
@@ -282,7 +370,12 @@ function setArtwork(entry, changed) {
       fallback.hidden = false;
       $("#art-stage")?.style?.removeProperty?.("--art-image");
     }
-    art.classList.remove("is-changing");
+    art.classList.remove("is-changing", "is-back");
+    if (changed && !prefersReducedMotion()) {
+      art.classList.remove("enter-next", "enter-prev");
+      replayAnimation(art, back ? "enter-prev" : "enter-next");
+      replayAnimation($(".wave-strip"), "is-kicking");
+    }
   }, changed ? 160 : 0);
 }
 
@@ -315,7 +408,22 @@ function setTrackTitle(value) {
   if (title.textContent === nextTitle) return;
 
   const hadTitle = Boolean(title.textContent);
-  title.textContent = nextTitle;
+  if (hadTitle && !prefersReducedMotion() && typeof title.replaceChildren === "function") {
+    // each character rises in on its own beat; very long titles only stagger the first part
+    const chars = Array.from(nextTitle);
+    const spans = chars.slice(0, TITLE_ANIMATED_CHARS).map((char, index) => {
+      const span = document.createElement("span");
+      span.className = "ch";
+      span.textContent = char;
+      span.style?.setProperty?.("--d", `${180 + index * 28}ms`);
+      return span;
+    });
+    const rest = chars.slice(TITLE_ANIMATED_CHARS).join("");
+    title.replaceChildren(...spans);
+    if (rest) title.append(rest);
+  } else {
+    title.textContent = nextTitle;
+  }
   if (hadTitle) replayAnimation($(".track-copy"), "is-entering");
   viewport.classList.remove("is-overflowing");
   requestAnimationFrame(updateTrackTitleOverflow);
@@ -331,6 +439,7 @@ function renderPlayer(player) {
 
   const playing = player?.state === "playing";
   $("#art-stage").classList.toggle("is-playing", playing);
+  $("#now-playing")?.classList?.toggle?.("is-playing", playing);
   setTrackTitle(player?.current?.title);
   $("#track-meta").textContent = player?.current ? `由 ${player.current.requested_by} 加入 · ${player.voice_channel?.name || "未連接語音頻道"}` : "加入一首歌，讓今晚有點聲音。";
   setArtwork(player?.current, changed);
@@ -340,18 +449,22 @@ function renderPlayer(player) {
   const progressRange = $("#progress-range");
   progressRange.max = total || 100;
   progressRange.disabled = state.mutationBusy || !player?.current || total <= 0;
-  const progressPercent = total > 0 ? Math.min(100, Math.max(0, progress / total * 100)) : 0;
-  progressRange.style?.setProperty?.("--progress-fill", `${progressPercent}%`);
+  $("#progress-track")?.classList?.toggle?.("is-disabled", progressRange.disabled);
   if (!state.scrubbing) {
     progressRange.value = progress;
     $("#time-current").textContent = formatTime(progress);
+    setProgressVisual(progress, total);
   }
   $("#time-total").textContent = formatTime(total);
 
   const toggle = $("#play-toggle");
   const paused = player?.state === "paused";
   toggle.dataset.action = paused ? "resume" : "pause";
-  $("#play-toggle-icon").src = paused || !player?.current ? CONTROL_ICONS.play : CONTROL_ICONS.pause;
+  const showPlay = paused || !player?.current;
+  toggle.classList.toggle("is-paused", showPlay);
+  // CSS animates `d`; the attributes keep the right glyph where that is unsupported
+  const glyphPaths = PLAY_PAUSE_PATHS[showPlay ? "play" : "pause"];
+  [".pp-l", ".pp-r"].forEach((selector, index) => toggle.querySelector?.(selector)?.setAttribute?.("d", glyphPaths[index]));
   toggle.setAttribute("aria-label", paused || !player?.current ? "播放" : "暫停");
   toggle.title = paused || !player?.current ? "播放" : "暫停";
   toggle.disabled = state.mutationBusy || !player?.current;
@@ -361,7 +474,8 @@ function renderPlayer(player) {
   shuffle.classList.toggle("is-active", shuffleEnabled);
   shuffle.setAttribute("aria-pressed", String(shuffleEnabled));
   shuffle.setAttribute("aria-label", shuffleEnabled ? "啟用隨機播放" : "關閉隨機播放");
-  $(".transport-state-dot", shuffle).hidden = !shuffleEnabled;
+  const shuffleDot = shuffle.querySelector?.(".transport-state-dot");
+  if (shuffleDot) shuffleDot.hidden = !shuffleEnabled;
   shuffle.disabled = state.mutationBusy || (!player?.current && !(player?.queue || []).length);
 
   const previous = $("#transport-previous");
@@ -386,8 +500,8 @@ function renderPlayer(player) {
   repeat.setAttribute("aria-pressed", String(repeatEnabled));
   repeat.setAttribute("aria-label", `${repeatLabel}，點擊切換循環模式`);
   repeat.title = repeatLabel;
-  $("#repeat-icon").src = repeatMode === "song" ? CONTROL_ICONS.repeat_one : CONTROL_ICONS.repeat;
   $("#repeat-state-dot").hidden = repeatMode !== "all";
+  $("#repeat-one-badge").hidden = repeatMode !== "song";
   repeat.disabled = state.mutationBusy || !player?.current;
 
   $("#transport-stop").disabled = state.mutationBusy || !player?.current;
@@ -396,6 +510,7 @@ function renderPlayer(player) {
   $("#volume-range").value = volume;
   $("#volume-range").style?.setProperty?.("--range-fill", `${volume}%`);
   $("#volume-output").value = `${volume}%`;
+  setVolumeVisual(volume);
   renderQueue(player?.queue || []);
 }
 
@@ -492,37 +607,23 @@ function renderQueue(queue) {
     };
     row.addEventListener("click", playFromRow);
     row.addEventListener("dragstart", event => {
+      if (state.mutationBusy) { event.preventDefault(); return; }
       state.draggingIndex = index;
       state.suppressQueueClick = true;
+      document.body.classList.add("is-queue-dragging");
       event.dataTransfer?.setData("text/plain", String(index));
       if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
       row.classList.add("is-dragging");
     });
     row.addEventListener("dragend", () => {
       state.draggingIndex = null;
+      queueDragPoint = null;
+      if (queueDragFrame !== null) cancelAnimationFrame(queueDragFrame);
+      queueDragFrame = null;
+      document.body.classList.remove("is-queue-dragging");
       row.classList.remove("is-dragging");
       clearQueueDropIndicators();
       setTimeout(() => { state.suppressQueueClick = false; }, 0);
-    });
-    row.addEventListener("dragover", event => {
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-      clearQueueDropIndicators();
-      const after = event.clientY >= row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
-      row.classList.add(after ? "is-drop-after" : "is-drop-before");
-    });
-    row.addEventListener("dragleave", event => {
-      if (!row.contains(event.relatedTarget)) row.classList.remove("is-drop-before", "is-drop-after");
-    });
-    row.addEventListener("drop", async event => {
-      event.preventDefault();
-      const source = state.draggingIndex;
-      const rect = row.getBoundingClientRect();
-      const insertSlot = index + (event.clientY >= rect.top + rect.height / 2 ? 1 : 0);
-      clearQueueDropIndicators();
-      if (state.mutationBusy || source === null) return;
-      const target = Math.max(0, Math.min(queue.length - 1, insertSlot - (source < insertSlot ? 1 : 0)));
-      if (source !== target) await reorderQueue(source, target);
     });
     return row;
   });
@@ -554,6 +655,98 @@ function clearQueueDropIndicators() {
   const queueList = $("#queue-list");
   if (!queueList?.querySelectorAll) return;
   $$(".queue-item", queueList).forEach(row => row.classList.remove("is-drop-before", "is-drop-after"));
+}
+
+function queueDropSlot(list, clientY) {
+  const rows = $$(".queue-item", list);
+  const slot = rows.findIndex(row => {
+    const rect = row.getBoundingClientRect();
+    return clientY < rect.top + rect.height / 2;
+  });
+  return slot < 0 ? rows.length : slot;
+}
+
+function showQueueDropIndicator(list, clientX, clientY) {
+  clearQueueDropIndicators();
+  const rect = list.getBoundingClientRect();
+  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+  const rows = $$(".queue-item", list);
+  if (!rows.length) return;
+  const slot = queueDropSlot(list, clientY);
+  const row = rows[Math.min(slot, rows.length - 1)];
+  row.classList.add(slot === rows.length ? "is-drop-after" : "is-drop-before");
+}
+
+function queueEdgeSpeed(position, start, end) {
+  if (position < start - QUEUE_SCROLL_EDGE || position > end + QUEUE_SCROLL_EDGE) return 0;
+  if (position < start + QUEUE_SCROLL_EDGE) return -Math.min(22, Math.max(2, (start + QUEUE_SCROLL_EDGE - position) * .28));
+  if (position > end - QUEUE_SCROLL_EDGE) return Math.min(22, Math.max(2, (position - end + QUEUE_SCROLL_EDGE) * .28));
+  return 0;
+}
+
+function scrollQueueDragTarget(list, clientX, clientY, amount = null) {
+  const rect = list.getBoundingClientRect();
+  if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top - QUEUE_SCROLL_EDGE && clientY <= rect.bottom + QUEUE_SCROLL_EDGE) {
+    const speed = amount ?? queueEdgeSpeed(clientY, rect.top, rect.bottom);
+    const before = list.scrollTop;
+    if (speed && list.scrollHeight > list.clientHeight) list.scrollTop += speed;
+    if (list.scrollTop !== before) return true;
+  }
+  const workspace = $(".workspace");
+  const page = workspace?.scrollHeight > workspace?.clientHeight + 1 ? workspace : document.scrollingElement;
+  if (!page) return false;
+  const speed = amount ?? queueEdgeSpeed(clientY, 0, window.innerHeight);
+  const before = page.scrollTop;
+  if (speed && page.scrollHeight > page.clientHeight) page.scrollTop += speed;
+  return page.scrollTop !== before;
+}
+
+function animateQueueDragScroll() {
+  queueDragFrame = null;
+  if (state.draggingIndex === null || !queueDragPoint) return;
+  const list = $("#queue-list");
+  if (scrollQueueDragTarget(list, queueDragPoint.x, queueDragPoint.y)) {
+    showQueueDropIndicator(list, queueDragPoint.x, queueDragPoint.y);
+  }
+  queueDragFrame = requestAnimationFrame(animateQueueDragScroll);
+}
+
+function setupQueueDragScroll() {
+  const list = $("#queue-list");
+  document.addEventListener("dragover", event => {
+    if (state.draggingIndex === null) return;
+    queueDragPoint = { x: event.clientX, y: event.clientY };
+    showQueueDropIndicator(list, event.clientX, event.clientY);
+    if (queueDragFrame === null) queueDragFrame = requestAnimationFrame(animateQueueDragScroll);
+  });
+  list.addEventListener("dragover", event => {
+    if (state.draggingIndex === null || state.mutationBusy) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    showQueueDropIndicator(list, event.clientX, event.clientY);
+  });
+  list.addEventListener("drop", event => {
+    if (state.draggingIndex === null) return;
+    event.preventDefault();
+    const source = state.draggingIndex;
+    const count = $$(".queue-item", list).length;
+    const slot = queueDropSlot(list, event.clientY);
+    clearQueueDropIndicators();
+    if (state.mutationBusy || !count) return;
+    const target = Math.max(0, Math.min(count - 1, slot - (source < slot ? 1 : 0)));
+    if (source !== target) void reorderQueue(source, target);
+  });
+  document.addEventListener("drop", event => {
+    if (state.draggingIndex !== null) event.preventDefault();
+  });
+  document.addEventListener("wheel", event => {
+    if (state.draggingIndex === null) return;
+    const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+    if (scrollQueueDragTarget(list, event.clientX, event.clientY, event.deltaY * scale)) {
+      event.preventDefault();
+      showQueueDropIndicator(list, event.clientX, event.clientY);
+    }
+  }, { passive: false });
 }
 
 async function submitQueuePlaylistBatch(name) {
@@ -640,6 +833,8 @@ async function submitQueuePlaylistDialog(event) {
 
 async function playerAction(action, button) {
   if (!state.guildId) return;
+  if (action === "previous") state.skipDirection = -1;
+  else if (action === "skip") state.skipDirection = 1;
   return runMutation(async () => {
     button?.classList.add("is-switching");
     try {
@@ -704,6 +899,7 @@ async function reorderQueue(source, target) {
 
 async function playQueueItem(index) {
   if (!state.guildId) return;
+  state.skipDirection = 1;
   return runMutation(async () => {
     try {
       const result = await api("/api/queue/play", {
@@ -741,7 +937,7 @@ function animateProgress() {
     const progress = Math.min(state.player.progress + elapsed, state.player.current.duration);
     const range = $("#progress-range");
     range.value = progress;
-    range.style?.setProperty?.("--progress-fill", `${Math.min(100, progress / state.player.current.duration * 100)}%`);
+    setProgressVisual(progress, state.player.current.duration);
     $("#time-current").textContent = formatTime(progress);
   }
   requestAnimationFrame(animateProgress);
@@ -1071,6 +1267,7 @@ async function addTrackToQueue(query) {
       const result = await api("/api/queue/add", { method: "POST", body: { guild_id: state.guildId, query } });
       $("#track-query").value = "";
       renderQueue(result.queue);
+      flashAddButton($("#add-track-form"));
       toast(`已加入 ${result.entry.title}`);
     } catch (error) {
       toast(error.message, "error");
@@ -1216,25 +1413,41 @@ async function requestRestart(mode) {
 
 document.addEventListener("DOMContentLoaded", () => {
   $$(".nav-item").forEach(button => button.addEventListener("click", () => switchPage(button.dataset.page)));
-  $$('[data-action]').forEach(button => button.addEventListener("click", () => playerAction(button.dataset.action, button)));
+  $$('[data-action]').forEach(button => button.addEventListener("click", () => {
+    kickTransportGlyph(button);
+    return playerAction(button.dataset.action, button);
+  }));
   $("#guild-select").addEventListener("change", event => { state.guildId = event.target.value || null; refreshSnapshot(); });
   $("#progress-range").addEventListener("input", event => {
     state.scrubbing = true;
+    $("#progress-track")?.classList?.add?.("is-scrubbing");
     $("#time-current").textContent = formatTime(event.target.value);
+    setProgressVisual(Number(event.target.value), Number(event.target.max) || 0);
   });
-  $("#progress-range").addEventListener("change", event => seekPlayer(Number(event.target.value)));
+  $("#progress-range").addEventListener("change", event => {
+    $("#progress-track")?.classList?.remove?.("is-scrubbing");
+    return seekPlayer(Number(event.target.value));
+  });
+  $("#progress-range").addEventListener("pointerup", () => $("#progress-track")?.classList?.remove?.("is-scrubbing"));
   $("#progress-range").addEventListener("pointercancel", () => {
     state.scrubbing = false;
+    $("#progress-track")?.classList?.remove?.("is-scrubbing");
     renderPlayer(state.player);
   });
   $("#volume-range").addEventListener("input", event => {
     $("#volume-output").value = `${event.target.value}%`;
     event.target.style.setProperty("--range-fill", `${event.target.value}%`);
+    setVolumeVisual(Number(event.target.value));
   });
   $("#volume-range").addEventListener("change", event => { void setPlayerVolume(Number(event.target.value) / 100); });
   $("#add-track-form").addEventListener("submit", event => {
     event.preventDefault();
-    void addTrackToQueue($("#track-query").value.trim());
+    const query = $("#track-query").value.trim();
+    if (!query) {
+      if (!prefersReducedMotion()) replayAnimation($("#add-track-form"), "is-shaking");
+      return;
+    }
+    void addTrackToQueue(query);
   });
   $("#new-playlist").addEventListener("click", () => setPlaylistCreateOpen(!state.playlistCreateOpen));
   $("#playlist-create-form").addEventListener("submit", createPlaylist);
@@ -1263,6 +1476,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#refresh-logs").addEventListener("click", loadLogs); $("#log-level").addEventListener("change", renderLogs); $("#log-search").addEventListener("input", renderLogs);
   setupNavIndicator();
   setupSpotlight();
+  setupArtTilt();
+  setupPlayMagnet();
+  setupQueueDragScroll();
   window.addEventListener?.("resize", () => requestAnimationFrame(() => { updateTrackTitleOverflow(); positionNavIndicator(); }));
   requestAnimationFrame(updateTrackTitleOverflow);
   refreshSnapshot(); setInterval(refreshSnapshot, 2000); requestAnimationFrame(animateProgress);

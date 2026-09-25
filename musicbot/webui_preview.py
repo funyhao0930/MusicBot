@@ -438,6 +438,7 @@ def create_preview_app() -> web.Application:
             {
                 "ok": True,
                 "entry": copy.deepcopy(entry),
+                "added_count": 1,
                 "queue": copy.deepcopy(state.player["queue"]),
             }
         )
