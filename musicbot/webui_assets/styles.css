@@ -531,6 +531,46 @@ input::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent); }
 .offline-banner[hidden] { display: none; }
 .offline-banner .spinner { width: 13px; height: 13px; margin: 0; border-width: 2px; border-top-color: var(--danger); }
 
+/* ---------- Easter egg: 咕咕嘎嘎 ---------- */
+.penguin-egg { position: fixed; left: 0; bottom: 6px; z-index: 19; width: 72px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; will-change: transform; }
+.penguin-egg.is-still { animation: penguin-pop var(--motion-page) var(--ease-spring) both; }
+.penguin-egg.is-hopping .penguin-waddle svg { animation: penguin-hop 420ms var(--ease-out); }
+.penguin-waddle { transform-origin: 50% 100%; }
+.penguin-egg.is-walking .penguin-waddle { animation: penguin-waddle 360ms var(--ease-in-out) infinite alternate; }
+.penguin-waddle svg { display: block; width: 72px; height: auto; overflow: visible; filter: drop-shadow(0 10px 14px rgba(0,0,0,.45)); }
+.penguin-body, .penguin-flipper { fill: #2f3450; }
+.penguin-belly, .penguin-face { fill: #f4f1ea; }
+.penguin-eye { fill: #14111f; }
+.penguin-glint { fill: #fff; }
+.penguin-blush { fill: rgba(255,143,171,.55); }
+.penguin-beak, .penguin-foot { fill: #f6a53b; }
+.penguin-bandaid rect { fill: #f3cfa6; }
+.penguin-bandaid .penguin-bandaid-pad { fill: #e3b383; }
+.penguin-flipper { transform-box: fill-box; }
+.penguin-flipper-l { transform-origin: 100% 0; }
+.penguin-flipper-r { transform-origin: 0 0; }
+.penguin-egg.is-walking .penguin-flipper-l { animation: flap-l 360ms var(--ease-in-out) infinite alternate; }
+.penguin-egg.is-walking .penguin-flipper-r { animation: flap-r 360ms var(--ease-in-out) infinite alternate; }
+.penguin-bubble { position: absolute; left: 50%; bottom: calc(100% + 6px); padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 600; white-space: nowrap; box-shadow: 0 12px 28px rgba(0,0,0,.4); opacity: 0; transform: translateX(-50%) translateY(6px) scale(.8); transform-origin: 50% 100%; pointer-events: none; }
+.penguin-bubble::after { content: ""; position: absolute; left: 50%; top: 100%; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: inherit; border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); transform: rotate(45deg); }
+.penguin-bubble.is-speaking { animation: penguin-say 1700ms var(--ease-spring) both; }
+.penguin-pebble { position: fixed; bottom: 8px; z-index: 18; display: grid; place-items: center; width: 36px; height: 30px; padding: 0; border: 0; background: none; cursor: pointer; animation: pebble-drop var(--motion-page) var(--ease-spring) both; }
+.penguin-pebble svg { width: 22px; height: auto; fill: #8d8f9c; filter: drop-shadow(0 3px 4px rgba(0,0,0,.4)); transition: transform var(--motion-fast) var(--ease-out); }
+.penguin-pebble .pebble-glint { fill: rgba(255,255,255,.35); }
+.penguin-pebble:hover svg, .penguin-pebble:focus-visible svg { transform: scale(1.18) rotate(-8deg); }
+.penguin-pebble:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+.penguin-pebble.is-collected { animation: pebble-collect var(--motion-ui) var(--ease-out) forwards; }
+.penguin-pebble.is-leaving { animation: pebble-fade var(--motion-page) var(--ease-in-out) forwards; }
+@keyframes penguin-waddle { from { transform: rotate(-7deg) translateY(0); } to { transform: rotate(7deg) translateY(-3px); } }
+@keyframes flap-l { from { transform: rotate(4deg); } to { transform: rotate(-16deg); } }
+@keyframes flap-r { from { transform: rotate(16deg); } to { transform: rotate(-4deg); } }
+@keyframes penguin-hop { 40% { transform: translateY(-18px) scale(1.04, .96); } 70% { transform: translateY(0) scale(1.06, .92); } }
+@keyframes penguin-say { 0% { opacity: 0; transform: translateX(-50%) translateY(6px) scale(.8); } 14%, 82% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } 100% { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(.96); } }
+@keyframes penguin-pop { from { opacity: 0; transform: translateY(24px) scale(.9); } to { opacity: 1; transform: none; } }
+@keyframes pebble-drop { from { opacity: 0; transform: translateY(-26px); } to { opacity: 1; transform: none; } }
+@keyframes pebble-collect { to { opacity: 0; transform: translateY(-22px) scale(1.4); } }
+@keyframes pebble-fade { to { opacity: 0; transform: scale(.7); } }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1050px) {
   .app-shell { grid-template-columns: 196px minmax(0,1fr); }

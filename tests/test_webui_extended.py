@@ -354,8 +354,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="progress-track"', html)
         self.assertIn('id="volume-icon"', html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=15', html)
-        self.assertIn('/assets/app.js?v=19', html)
+        self.assertIn('/assets/styles.css?v=16', html)
+        self.assertIn('/assets/app.js?v=20', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
