@@ -270,7 +270,7 @@ def create_preview_app() -> web.Application:
     async def index(_request: web.Request) -> web.Response:
         html = (ASSET_DIR / "index.html").read_text(encoding="utf-8")
         html = html.replace(
-            "<small>本機控制中心</small>",
+            '<small data-public-text="公開控制中心">本機控制中心</small>',
             "<small>純預覽模式 · 不會連線 Discord</small>",
         )
         html = html.replace("Local only", "Preview only")

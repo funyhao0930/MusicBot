@@ -17,21 +17,21 @@
         <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
         <div>
           <strong>糖音機</strong>
-          <small>本機控制中心</small>
+          <small data-public-text="公開控制中心">本機控制中心</small>
         </div>
       </div>
 
       <nav class="nav-list" id="main-nav">
         <button class="nav-item is-active" data-page="dashboard"><span>控制台</span><small>播放與佇列</small></button>
         <button class="nav-item" data-page="playlists"><span>播放清單</span><small>自動播放</small></button>
-        <button class="nav-item" data-page="settings"><span>設定</span><small>機器人選項</small></button>
-        <button class="nav-item" data-page="permissions"><span>權限</span><small>群組與限制</small></button>
-        <button class="nav-item" data-page="logs"><span>日誌</span><small>執行紀錄</small></button>
+        <button class="nav-item" data-page="settings" data-local-only><span>設定</span><small>機器人選項</small></button>
+        <button class="nav-item" data-page="permissions" data-local-only><span>權限</span><small>群組與限制</small></button>
+        <button class="nav-item" data-page="logs" data-local-only><span>日誌</span><small>執行紀錄</small></button>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="local-chip"><span class="status-dot"></span> Local only</div>
-        <p>只接受這台電腦的連線</p>
+        <div class="local-chip"><span class="status-dot"></span> <span data-public-text="Public">Local only</span></div>
+        <p data-public-text="透過安全連線控制 糖音機">只接受這台電腦的連線</p>
       </div>
     </aside>
 
@@ -181,7 +181,7 @@
         </div>
       </section>
 
-      <section class="page" data-page-panel="settings">
+      <section class="page" data-page-panel="settings" data-local-only>
         <div class="content-header">
           <div><p class="section-kicker">設定管理</p><h2>機器人設定</h2></div>
           <div class="header-actions">
@@ -197,7 +197,7 @@
         <div class="settings-sections" id="settings-sections"></div>
       </section>
 
-      <section class="page" data-page-panel="permissions">
+      <section class="page" data-page-panel="permissions" data-local-only>
         <div class="content-header">
           <div><p class="section-kicker">存取控制</p><h2>權限群組</h2></div>
           <button class="button primary" id="permission-add-group">新增群組</button>
@@ -208,7 +208,7 @@
         </div>
       </section>
 
-      <section class="page" data-page-panel="logs">
+      <section class="page" data-page-panel="logs" data-local-only>
         <div class="content-header">
           <div><p class="section-kicker">RUNTIME</p><h2>執行日誌</h2></div>
           <button class="button ghost" id="refresh-logs">重新整理</button>

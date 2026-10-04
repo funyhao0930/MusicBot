@@ -295,10 +295,15 @@ async function runMutation(work) {
   }
 }
 
+function isPublicMode() {
+  return document.documentElement?.dataset?.mode === "public";
+}
+
 function switchPage(name) {
   const current = $(".page.is-active");
   const next = $(`[data-page-panel="${name}"]`);
   if (!next || current === next) return;
+  if (isPublicMode() && next.hasAttribute?.("data-local-only")) return;
   current?.classList.add("is-leaving");
   current?.classList.remove("is-active");
   setTimeout(() => current?.classList.remove("is-leaving"), 140);
