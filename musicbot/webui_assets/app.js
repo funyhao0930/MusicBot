@@ -220,10 +220,17 @@ function formatTime(value) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function toast(message, type = "info") {
+function toast(message, type = "info", meme = type === "error" ? "gugugaga" : "") {
   const node = document.createElement("div");
-  node.className = `toast${type === "error" ? " is-error" : ""}`;
+  node.className = `toast${type === "error" ? " is-error" : ""}${meme ? " has-meme" : ""}`;
   node.textContent = message;
+  if (meme) {
+    const image = document.createElement("img");
+    image.className = "toast-meme";
+    image.src = `/assets/meme-${meme}.webp`;
+    image.alt = "";
+    node.append(image);
+  }
   const bar = document.createElement("span");
   bar.className = "toast-bar";
   node.append(bar);
@@ -232,6 +239,11 @@ function toast(message, type = "info") {
     node.classList.add("is-leaving");
     node.addEventListener("animationend", () => node.remove(), { once: true });
   }, 2800);
+}
+
+function syncLoudMeme(volume) {
+  const loud = $("#meme-loud");
+  if (loud) loud.hidden = volume < 100;
 }
 
 function parseApiPayload(path, text) {
@@ -515,6 +527,7 @@ function renderPlayer(player) {
   $("#volume-range").value = volume;
   $("#volume-range").style?.setProperty?.("--range-fill", `${volume}%`);
   $("#volume-output").value = `${volume}%`;
+  syncLoudMeme(volume);
   setVolumeVisual(volume);
   renderQueue(player?.queue || []);
 }
@@ -845,6 +858,7 @@ async function playerAction(action, button) {
     try {
       const result = await api("/api/player/action", { method: "POST", body: { guild_id: state.guildId, action } });
       renderPlayer(result.player);
+      if (action === "stop") toast("已停止播放，燈先走了", "info", "walk-away");
     } catch (error) { toast(error.message, "error"); }
     finally { setTimeout(() => button?.classList.remove("is-switching"), 220); }
   });
@@ -1007,6 +1021,9 @@ function renderLogs() {
   const level = $("#log-level").value; const query = $("#log-search").value.toLowerCase();
   const lines = state.logs.filter(line => (!level || line.includes(level)) && (!query || line.toLowerCase().includes(query)));
   const view = $("#log-view"); view.textContent = lines.join("\n");
+  view.hidden = lines.length === 0;
+  const empty = $("#log-empty");
+  if (empty) empty.hidden = lines.length > 0;
   if ($("#log-auto-scroll").checked) view.scrollTop = view.scrollHeight;
 }
 
@@ -1081,7 +1098,7 @@ function renderPlaylistEditor() {
             body: { guild_id: state.guildId, query: source },
           });
           renderQueue(result.queue);
-          toast(`已加入 ${result.added_count} 首歌曲`);
+          toast(`已加入 ${result.added_count} 首歌曲`, "info", "arms");
         } catch (error) {
           toast(error.message, "error");
         }
@@ -1273,7 +1290,7 @@ async function addTrackToQueue(query) {
       $("#track-query").value = "";
       renderQueue(result.queue);
       flashAddButton($("#add-track-form"));
-      toast(`已加入 ${result.entry.title}`);
+      toast(`已加入 ${result.entry.title}`, "info", "arms");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -1294,7 +1311,7 @@ async function queuePlaylistTracks() {
         body: { guild_id: state.guildId },
       });
       renderQueue(result.queue);
-      toast(`已加入 ${result.added_count} 首歌曲`);
+      toast(`已加入 ${result.added_count} 首歌曲`, "info", "arms");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -1441,6 +1458,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("#volume-range").addEventListener("input", event => {
     $("#volume-output").value = `${event.target.value}%`;
+    syncLoudMeme(Number(event.target.value));
     event.target.style.setProperty("--range-fill", `${event.target.value}%`);
     setVolumeVisual(Number(event.target.value));
   });

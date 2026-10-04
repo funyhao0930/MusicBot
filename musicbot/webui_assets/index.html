@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>糖音機 控制中心</title>
-  <link rel="stylesheet" href="/assets/styles.css?v=15">
+  <link rel="stylesheet" href="/assets/styles.css?v=17">
 </head>
 <body>
   <div class="ambient ambient-a" aria-hidden="true"></div>
@@ -30,6 +30,7 @@
       </nav>
 
       <div class="sidebar-footer">
+        <img class="meme-mascot" src="/assets/meme-idle.webp" alt="" title="咕咕嘎嘎" loading="lazy" decoding="async">
         <div class="local-chip"><span class="status-dot"></span> <span data-public-text="Public">Local only</span></div>
         <p data-public-text="透過安全連線控制 糖音機">只接受這台電腦的連線</p>
       </div>
@@ -62,10 +63,11 @@
               <div class="art-tilt" id="art-tilt">
                 <div class="album-art" id="album-art">
                   <img id="album-image" alt="" hidden>
-                  <div class="album-fallback" id="album-fallback"><span>NO</span><span>ARTWORK</span></div>
+                  <div class="album-fallback" id="album-fallback"><img class="meme-art" src="/assets/meme-dance.webp" alt="沒有封面，燈企鵝代打上陣" loading="lazy" decoding="async"><span class="meme-art-label">NO ARTWORK</span></div>
                   <div class="art-sheen" aria-hidden="true"></div>
                 </div>
               </div>
+              <img class="meme-vibe" src="/assets/meme-wiggle.webp" alt="" loading="lazy" decoding="async">
               <div class="wave-strip" aria-hidden="true">
                 <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
               </div>
@@ -118,6 +120,7 @@
               <div class="volume-row">
                 <label for="volume-range"><span class="volume-icon lv-1" id="volume-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="body" d="M11 5 6 9H3v6h3l5 4z"/><path class="w1" d="M15.5 8.5a5 5 0 0 1 0 7"/><path class="w2" d="M18.5 5.5a9.5 9.5 0 0 1 0 13"/></svg></span>音量 <output id="volume-output">25%</output></label>
                 <input id="volume-range" type="range" min="1" max="100" value="25" data-mutation-control>
+                <span class="meme-loud" id="meme-loud" hidden><img src="/assets/meme-chick.webp" alt="音量全開：咕咕嘎嘎！！！" loading="lazy" decoding="async"></span>
               </div>
             </div>
           </section>
@@ -144,6 +147,7 @@
 
             <div class="queue-list" id="queue-list" aria-live="polite"></div>
             <div class="empty-state" id="queue-empty">
+              <img class="meme-empty" src="/assets/meme-you-penguin.webp" alt="你是凑企鵝" loading="lazy" decoding="async">
               <strong>佇列還是空的</strong>
               <p>貼上 YouTube、Spotify 連結，或直接搜尋歌曲。</p>
             </div>
@@ -176,7 +180,7 @@
               <button class="button primary" type="submit" data-mutation-control>加入</button>
             </form>
             <div class="playlist-tracks" id="playlist-tracks"></div>
-            <div class="empty-state" id="playlist-empty"><strong>這張清單還沒有歌</strong><p>加入連結或搜尋詞，糖音機 會依序播放。</p></div>
+            <div class="empty-state" id="playlist-empty"><img class="meme-empty" src="/assets/meme-writing.webp" alt="燈在紙上寫嘎嘎咕咕" loading="lazy" decoding="async"><strong>這張清單還沒有歌</strong><p>燈還在寫詞……先加入連結或搜尋詞給她一點靈感，糖音機 會依序播放。</p></div>
           </section>
         </div>
       </section>
@@ -203,6 +207,7 @@
           <button class="button primary" id="permission-add-group">新增群組</button>
         </div>
         <div id="permissions-root" class="feature-placeholder">
+          <img class="meme-empty" src="/assets/meme-stare.webp" alt="燈企鵝在雪地裡發呆等待" loading="lazy" decoding="async">
           <strong>正在讀取權限群組</strong>
           <p>載入完成後可修改歌曲數量、播放清單、跳過與命令限制。</p>
         </div>
@@ -219,13 +224,18 @@
           <label class="toggle-row"><input id="log-auto-scroll" type="checkbox" checked><span>自動捲動</span></label>
         </div>
         <pre class="log-view" id="log-view" tabindex="0" aria-label="糖音機 日誌"></pre>
+        <div class="empty-state log-empty" id="log-empty" hidden>
+          <img class="meme-empty" src="/assets/meme-deadeye.webp" alt="穿企鵝裝的女孩一臉無奈" loading="lazy" decoding="async">
+          <strong>沒有符合的日誌</strong>
+          <p>這裡空空的，只剩一臉無奈的企鵝。</p>
+        </div>
       </section>
     </main>
   </div>
 
   <div class="toast-region" id="toast-region" aria-live="polite"></div>
   <div class="offline-banner" id="offline-banner" role="status" hidden>
-    <span class="spinner" aria-hidden="true"></span>
+    <img class="meme-offline" src="/assets/meme-hey.webp" alt="" loading="lazy" decoding="async">
     <span>糖音機暫時無法連線，控制台會自動重試。</span>
   </div>
   <dialog class="playlist-dialog" id="queue-playlist-dialog" aria-labelledby="queue-playlist-dialog-title">
@@ -250,9 +260,9 @@
     </form>
   </dialog>
   <div class="reconnect-layer" id="reconnect-layer" hidden>
-    <div class="reconnect-card"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
+    <div class="reconnect-card"><img class="meme-reconnect" src="/assets/meme-hey.webp" alt="燈歪頭問：hey?" loading="lazy" decoding="async"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=19" defer></script>
+  <script src="/assets/app.js?v=21" defer></script>
 </body>
 </html>

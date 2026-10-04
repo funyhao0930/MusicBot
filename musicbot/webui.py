@@ -37,6 +37,18 @@ _ASSET_CONTENT_TYPES = {
     "icon-repeat-one.svg": "image/svg+xml",
     "icon-stop.svg": "image/svg+xml",
     "icon-state-dot.svg": "image/svg+xml",
+    "meme-dance.webp": "image/webp",
+    "meme-you-penguin.webp": "image/webp",
+    "meme-writing.webp": "image/webp",
+    "meme-hey.webp": "image/webp",
+    "meme-walk-away.webp": "image/webp",
+    "meme-wiggle.webp": "image/webp",
+    "meme-arms.webp": "image/webp",
+    "meme-stare.webp": "image/webp",
+    "meme-gugugaga.webp": "image/webp",
+    "meme-deadeye.webp": "image/webp",
+    "meme-chick.webp": "image/webp",
+    "meme-idle.webp": "image/webp",
 }
 _PROTECTED_PERMISSION_GROUPS = {"owner", "default"}
 
@@ -324,9 +336,12 @@ class MusicBotWebUI:
         asset = self.asset_dir / name
         if not asset.is_file():
             raise web.HTTPNotFound()
+        content_type = _ASSET_CONTENT_TYPES[name]
+        if content_type == "image/webp":
+            return web.Response(body=asset.read_bytes(), content_type=content_type)
         return web.Response(
             text=asset.read_text(encoding="utf-8"),
-            content_type=_ASSET_CONTENT_TYPES[name],
+            content_type=content_type,
             charset="utf-8",
         )
 

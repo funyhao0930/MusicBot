@@ -354,8 +354,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="progress-track"', html)
         self.assertIn('id="volume-icon"', html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=15', html)
-        self.assertIn('/assets/app.js?v=19', html)
+        self.assertIn('/assets/styles.css?v=17', html)
+        self.assertIn('/assets/app.js?v=21', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -375,6 +375,13 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("@keyframes kick-ne", css)
         self.assertIn("@keyframes skip-fwd", css)
         self.assertIn(".progress-track.is-scrubbing", css)
+
+        self.assertIn('src="/assets/meme-dance.webp"', html)
+        self.assertIn('id="log-empty"', html)
+        response = await self.client.get("/assets/meme-hey.webp")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.content_type, "image/webp")
+        self.assertTrue((await response.read()).startswith(b"RIFF"))
 
         response = await self.client.get("/assets/app.js")
         self.assertEqual(response.status, 200)

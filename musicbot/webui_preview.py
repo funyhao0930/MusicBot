@@ -27,6 +27,18 @@ ASSET_CONTENT_TYPES = {
     "icon-repeat-one.svg": "image/svg+xml",
     "icon-stop.svg": "image/svg+xml",
     "icon-state-dot.svg": "image/svg+xml",
+    "meme-dance.webp": "image/webp",
+    "meme-you-penguin.webp": "image/webp",
+    "meme-writing.webp": "image/webp",
+    "meme-hey.webp": "image/webp",
+    "meme-walk-away.webp": "image/webp",
+    "meme-wiggle.webp": "image/webp",
+    "meme-arms.webp": "image/webp",
+    "meme-stare.webp": "image/webp",
+    "meme-gugugaga.webp": "image/webp",
+    "meme-deadeye.webp": "image/webp",
+    "meme-chick.webp": "image/webp",
+    "meme-idle.webp": "image/webp",
 }
 
 
