@@ -234,122 +234,6 @@ function toast(message, type = "info") {
   }, 2800);
 }
 
-/* ---------- Easter egg: 咕咕嘎嘎 ---------- */
-const PENGUIN_SVG = `<svg viewBox="0 0 64 76" aria-hidden="true">
-  <g class="penguin-flipper penguin-flipper-l"><path d="M12 38c-6 6-8 15-6 21 5-3 9-10 10-18z"/></g>
-  <g class="penguin-flipper penguin-flipper-r"><path d="M52 38c6 6 8 15 6 21-5-3-9-10-10-18z"/></g>
-  <ellipse class="penguin-body" cx="32" cy="42" rx="22" ry="28"/>
-  <ellipse class="penguin-belly" cx="32" cy="48" rx="14.5" ry="19.5"/>
-  <path class="penguin-face" d="M17 30c0-9 7-14 15-14s15 5 15 14c0 6-6 9-15 9s-15-3-15-9z"/>
-  <circle class="penguin-eye" cx="25.5" cy="28" r="2.6"/><circle class="penguin-eye" cx="38.5" cy="28" r="2.6"/>
-  <circle class="penguin-glint" cx="26.4" cy="27.1" r=".9"/><circle class="penguin-glint" cx="39.4" cy="27.1" r=".9"/>
-  <ellipse class="penguin-blush" cx="21" cy="34" rx="3.4" ry="1.9"/><ellipse class="penguin-blush" cx="43" cy="34" rx="3.4" ry="1.9"/>
-  <path class="penguin-beak" d="M28.5 32.5h7l-3.5 4.2z"/>
-  <g class="penguin-bandaid" transform="rotate(-24 42 18)"><rect x="35.5" y="15.5" width="13" height="5" rx="2.5"/><rect class="penguin-bandaid-pad" x="40" y="15.5" width="4" height="5"/></g>
-  <ellipse class="penguin-foot" cx="24" cy="71" rx="6.5" ry="3"/><ellipse class="penguin-foot" cx="40" cy="71" rx="6.5" ry="3"/>
-</svg>`;
-const PEBBLE_SVG = '<svg viewBox="0 0 24 16" aria-hidden="true"><ellipse cx="12" cy="9" rx="10" ry="6.5"/><ellipse class="pebble-glint" cx="8.5" cy="6.6" rx="3" ry="1.4"/></svg>';
-const PENGUIN_CODES = ["gugugaga", "tomorin"];
-const PEBBLE_STORAGE_KEY = "musicbot.penguin.pebbles";
-let penguinActive = false;
-
-function readPebbleCount() {
-  try { return Number(localStorage.getItem(PEBBLE_STORAGE_KEY)) || 0; } catch { return 0; }
-}
-
-function writePebbleCount(count) {
-  try { localStorage.setItem(PEBBLE_STORAGE_KEY, String(count)); } catch { /* storage unavailable */ }
-}
-
-function showPenguinBubble(penguin) {
-  const bubble = $(".penguin-bubble", penguin);
-  if (!bubble) return;
-  replayAnimation(bubble, "is-speaking");
-}
-
-function dropPebble(x) {
-  const pebble = document.createElement("button");
-  pebble.type = "button";
-  pebble.className = "penguin-pebble";
-  pebble.setAttribute("aria-label", "撿起石頭");
-  pebble.title = "撿起石頭";
-  pebble.innerHTML = PEBBLE_SVG;
-  pebble.style.left = `${Math.round(x)}px`;
-  const expire = setTimeout(() => {
-    pebble.classList.add("is-leaving");
-    pebble.addEventListener("animationend", () => pebble.remove(), { once: true });
-  }, 9000);
-  pebble.addEventListener("click", () => {
-    clearTimeout(expire);
-    const count = readPebbleCount() + 1;
-    writePebbleCount(count);
-    pebble.disabled = true;
-    pebble.classList.add("is-collected");
-    pebble.addEventListener("animationend", () => pebble.remove(), { once: true });
-    toast(`撿到一顆石頭！已經收集了 ${count} 顆 🐧`);
-  }, { once: true });
-  document.body.append(pebble);
-}
-
-function releasePenguin() {
-  if (penguinActive) return;
-  penguinActive = true;
-  const penguin = document.createElement("div");
-  penguin.className = "penguin-egg";
-  penguin.setAttribute("role", "img");
-  penguin.setAttribute("aria-label", "一隻企鵝走過，說：咕咕嘎嘎");
-  penguin.innerHTML = `<span class="penguin-bubble">咕咕嘎嘎！</span><div class="penguin-waddle">${PENGUIN_SVG}</div>`;
-  penguin.addEventListener("click", () => {
-    replayAnimation(penguin, "is-hopping");
-    showPenguinBubble(penguin);
-  });
-  document.body.append(penguin);
-
-  const finish = () => { penguin.remove(); penguinActive = false; };
-  const width = window.innerWidth || 1200;
-  if (prefersReducedMotion() || typeof penguin.animate !== "function") {
-    penguin.classList.add("is-still");
-    penguin.style.left = `${Math.round(width / 2 - 36)}px`;
-    showPenguinBubble(penguin);
-    dropPebble(width / 2 + 44);
-    setTimeout(finish, 3200);
-    return;
-  }
-
-  const start = -96;
-  const end = width + 96;
-  const duration = Math.min(9000, Math.max(4200, (end - start) / 0.24));
-  penguin.classList.add("is-walking");
-  const walk = penguin.animate(
-    [{ transform: `translateX(${start}px)` }, { transform: `translateX(${end}px)` }],
-    { duration, easing: "linear", fill: "forwards" },
-  );
-  setTimeout(() => showPenguinBubble(penguin), duration * 0.22);
-  setTimeout(() => dropPebble(start + (end - start) * 0.58 + 18), duration * 0.58);
-  walk.onfinish = finish;
-}
-
-function setupPenguinEgg() {
-  let taps = 0;
-  let tapTimer = null;
-  const countTap = () => {
-    taps += 1;
-    clearTimeout(tapTimer);
-    tapTimer = setTimeout(() => { taps = 0; }, 1600);
-    if (taps >= 5) { taps = 0; releasePenguin(); }
-  };
-  $(".brand-mark")?.addEventListener("click", countTap);
-  $("#page-title")?.addEventListener("click", countTap);
-
-  let typed = "";
-  document.addEventListener("keydown", event => {
-    if (event.ctrlKey || event.metaKey || event.altKey || event.key?.length !== 1) return;
-    if (event.target?.closest?.("input, textarea, select, [contenteditable]")) return;
-    typed = (typed + event.key.toLowerCase()).slice(-12);
-    if (PENGUIN_CODES.some(code => typed.endsWith(code))) { typed = ""; releasePenguin(); }
-  });
-}
-
 function parseApiPayload(path, text) {
   const safeText = path.startsWith("/api/guilds")
     ? text.replace(/("id"\s*:\s*)(\d{16,})/g, '$1"$2"')
@@ -1600,7 +1484,6 @@ document.addEventListener("DOMContentLoaded", () => {
   setupArtTilt();
   setupPlayMagnet();
   setupQueueDragScroll();
-  setupPenguinEgg();
   window.addEventListener?.("resize", () => requestAnimationFrame(() => { updateTrackTitleOverflow(); positionNavIndicator(); }));
   requestAnimationFrame(updateTrackTitleOverflow);
   refreshSnapshot(); setInterval(refreshSnapshot, 2000); requestAnimationFrame(animateProgress);
