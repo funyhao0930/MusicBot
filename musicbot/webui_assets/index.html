@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#050506">
   <title>糖音機 控制中心</title>
   <link rel="preload" href="/assets/figtree-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/styles.css?v=19">
+  <link rel="stylesheet" href="/assets/styles.css?v=20">
 </head>
 <body>
   <!-- Interface icons follow the Lucide set (ISC License); transport glyphs are drawn for this app. -->
@@ -54,7 +54,7 @@
     </aside>
 
     <main class="main panel" id="main">
-      <div class="np-backdrop" id="np-backdrop" aria-hidden="true"><span class="np-layer is-active"></span><span class="np-layer"></span></div>
+      <div class="ambient np-backdrop" id="np-backdrop" aria-hidden="true"><span class="ambient-layer is-active"></span><span class="ambient-layer"></span></div>
 
       <header class="topbar">
         <h1 id="page-title">今晚播什麼？</h1>
@@ -210,16 +210,31 @@
         <button class="button primary" type="submit" data-mutation-control>加入</button>
       </form>
 
-      <div class="queue-bulk-actions" id="queue-bulk-actions">
+      <section class="queue-now" id="queue-now" aria-labelledby="queue-now-heading" hidden>
+        <h3 class="queue-section-title" id="queue-now-heading">正在播放</h3>
+        <div class="queue-now-row">
+          <span class="queue-thumb" id="queue-now-thumb"><img id="queue-now-image" alt="" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+          <span class="queue-now-copy">
+            <strong id="queue-now-title"></strong>
+            <small id="queue-now-meta"></small>
+          </span>
+          <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+      </section>
+
+      <div class="queue-next-head">
+        <h3 class="queue-section-title" id="queue-next-heading">接下來</h3>
         <label class="queue-select-all-label">
           <input class="check" id="queue-select-all" type="checkbox" disabled>
           <span>全選</span>
         </label>
+      </div>
+      <div class="queue-bulk-actions" id="queue-bulk-actions" hidden>
         <span class="queue-selected-count" id="queue-selected-count">未選取歌曲</span>
-        <button class="button ghost small" id="queue-add-to-playlist" type="button" disabled>加入播放清單</button>
+        <button class="button secondary small" id="queue-add-to-playlist" type="button" disabled>加入播放清單</button>
       </div>
 
-      <div class="queue-list" id="queue-list" aria-live="polite"></div>
+      <div class="queue-list" id="queue-list" aria-live="polite" aria-labelledby="queue-next-heading"></div>
       <div class="empty-state" id="queue-empty">
         <img class="meme-empty" src="/assets/meme-you-penguin.webp" alt="你是凑企鵝" loading="lazy" decoding="async">
         <strong>佇列還是空的</strong>
@@ -228,17 +243,25 @@
     </aside>
 
     <footer class="player-bar" id="player-bar">
+      <div class="ambient bar-ambient" id="bar-ambient" aria-hidden="true"><span class="ambient-layer is-active"></span><span class="ambient-layer"></span></div>
       <div class="transport" role="group" aria-label="播放控制">
-        <div class="bar-track">
-          <div class="bar-art" id="bar-art">
+        <div class="sheet-head">
+          <button class="icon-button sheet-collapse" id="player-collapse" type="button" aria-label="收合播放畫面" title="收合">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <span class="sheet-title" id="sheet-title">正在播放</span>
+        </div>
+        <button class="bar-track" id="bar-track" type="button">
+          <span class="bar-art" id="bar-art">
             <img id="bar-image" alt="" hidden>
             <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-          </div>
-          <div class="bar-copy">
+          </span>
+          <span class="bar-copy">
+            <span class="visually-hidden">查看正在播放：</span>
             <strong id="bar-title">尚未播放歌曲</strong>
             <small id="bar-meta"></small>
-          </div>
-        </div>
+          </span>
+        </button>
 
         <div class="bar-center">
           <div class="transport-actions">
@@ -320,6 +343,6 @@
     <div class="reconnect-card"><img class="meme-reconnect" src="/assets/meme-hey.webp" alt="燈歪頭問：hey?" loading="lazy" decoding="async"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=23" defer></script>
+  <script src="/assets/app.js?v=24" defer></script>
 </body>
 </html>

@@ -294,12 +294,12 @@ function renderGuilds(guilds) {
   state.guildId = candidate;
 }
 
-function setBarArtwork(thumbnail, hasTrack) {
-  const image = $("#bar-image");
+// small cover slots (player bar, the queue's 正在播放 row) borrow the big cover's penguin stand-in
+function setMiniArtwork(imageSelector, boxSelector, thumbnail, hasTrack) {
+  const image = $(imageSelector);
   if (!image) return;
-  // a track without artwork borrows the same penguin stand-in as the big cover
   const url = thumbnail || (hasTrack ? STAND_IN_ART : "");
-  $("#bar-art")?.classList?.toggle?.("is-letterboxed", isLetterboxed(url));
+  $(boxSelector)?.classList?.toggle?.("is-letterboxed", isLetterboxed(url));
   if (url) {
     let triedStandIn = url === STAND_IN_ART;
     image.onerror = () => {
@@ -323,22 +323,25 @@ function setBarArtwork(thumbnail, hasTrack) {
 
 const STAND_IN_ART = "/assets/meme-dance.webp";
 
-// the ambient light keeps two layers: the next cover fades in over the current one once it has loaded
+// each ambient light keeps two layers: the next cover fades in over the current one once it has loaded
 function setBackdropImage(url) {
-  const backdrop = $("#np-backdrop");
-  if (typeof backdrop?.querySelectorAll !== "function") return;
-  const layers = [...backdrop.querySelectorAll(".np-layer")];
-  if (layers.length < 2) return;
-  const active = layers.find(layer => layer.classList.contains("is-active")) || layers[0];
-  if ((active.dataset.image || STAND_IN_ART) === url) return;
+  const groups = $$(".ambient")
+    .map(ambient => (typeof ambient?.querySelectorAll === "function" ? $$(".ambient-layer", ambient) : []))
+    .filter(layers => layers.length >= 2);
+  const activeLayer = layers => layers.find(layer => layer.classList.contains("is-active")) || layers[0];
+  const pending = groups.filter(layers => (activeLayer(layers).dataset.image || STAND_IN_ART) !== url);
+  if (!pending.length) return;
   state.backdropImage = url;
   const swap = () => {
     if (state.backdropImage !== url) return;
-    const next = layers.find(layer => layer !== active);
-    next.dataset.image = url;
-    next.style.backgroundImage = `url(${JSON.stringify(url)})`;
-    active.classList.remove("is-active");
-    next.classList.add("is-active");
+    pending.forEach(layers => {
+      const active = activeLayer(layers);
+      const next = layers.find(layer => layer !== active);
+      next.dataset.image = url;
+      next.style.backgroundImage = `url(${JSON.stringify(url)})`;
+      active.classList.remove("is-active");
+      next.classList.add("is-active");
+    });
   };
   if (typeof Image !== "function") { swap(); return; }
   const probe = new Image();
@@ -359,9 +362,12 @@ function setArtwork(entry, changed) {
   if (!changed && state.artworkKey === artworkKey) return;
   state.artworkKey = artworkKey;
   const back = state.skipDirection < 0;
+  const covers = [art, isPlayerOpen() ? $("#bar-art") : null].filter(cover => cover?.classList);
   if (changed) {
-    art.classList.toggle("is-back", back);
-    art.classList.add("is-changing");
+    covers.forEach(cover => {
+      cover.classList.toggle("is-back", back);
+      cover.classList.add("is-changing");
+    });
   }
   setTimeout(() => {
     const image = $("#album-image");
@@ -388,13 +394,16 @@ function setArtwork(entry, changed) {
       image.hidden = true;
       fallback.hidden = false;
     }
-    setBarArtwork(thumbnail, Boolean(entry));
+    setMiniArtwork("#bar-image", "#bar-art", thumbnail, Boolean(entry));
+    setMiniArtwork("#queue-now-image", "#queue-now-thumb", thumbnail, Boolean(entry));
     setBackdropImage(thumbnail || STAND_IN_ART);
-    art.classList.remove("is-changing", "is-back");
-    if (changed && !prefersReducedMotion()) {
-      art.classList.remove("enter-next", "enter-prev");
-      replayAnimation(art, back ? "enter-prev" : "enter-next");
-    }
+    covers.forEach(cover => {
+      cover.classList.remove("is-changing", "is-back");
+      if (changed && !prefersReducedMotion()) {
+        cover.classList.remove("enter-next", "enter-prev");
+        replayAnimation(cover, back ? "enter-prev" : "enter-next");
+      }
+    });
   }, changed ? 170 : 0);
 }
 
@@ -458,6 +467,21 @@ function renderBarTrack(player) {
   }
 }
 
+function renderQueueNow(player) {
+  const section = $("#queue-now");
+  if (!section) return;
+  const current = player?.current;
+  section.hidden = !current;
+  section.classList?.toggle?.("is-playing", player?.state === "playing");
+  const title = $("#queue-now-title");
+  if (title) {
+    title.textContent = current?.title || "";
+    title.title = current?.title || "";
+  }
+  const meta = $("#queue-now-meta");
+  if (meta) meta.textContent = current ? `由 ${current.requested_by} 加入` : "";
+}
+
 function renderPlayer(player) {
   const previousUrl = state.currentUrl;
   const currentUrl = player?.current?.url || "";
@@ -470,10 +494,12 @@ function renderPlayer(player) {
   $("#art-stage").classList.toggle("is-playing", playing);
   $("#now-playing")?.classList?.toggle?.("is-playing", playing);
   $("#app-shell")?.classList?.toggle?.("is-playing", playing);
+  $("#app-shell")?.classList?.toggle?.("has-track", Boolean(player?.current));
   setTrackTitle(player?.current?.title);
   $("#track-meta").textContent = player?.current ? `由 ${player.current.requested_by} 加入 · ${player.voice_channel?.name || "未連接語音頻道"}` : "加入一首歌，讓今晚有點聲音。";
   renderNowPlayingState(player);
   renderBarTrack(player);
+  renderQueueNow(player);
   setArtwork(player?.current, changed);
 
   const total = player?.current?.duration || 0;
@@ -563,6 +589,8 @@ function syncQueueSelectionControls(queue) {
   const selectAll = $("#queue-select-all");
   const selectedLabel = $("#queue-selected-count");
   const addButton = $("#queue-add-to-playlist");
+  const selectAllLabel = $(".queue-select-all-label");
+  if (selectAllLabel) selectAllLabel.hidden = queue.length === 0;
   if (selectAll) {
     selectAll.disabled = state.mutationBusy || queue.length === 0;
     selectAll.checked = queue.length > 0 && selectedCount === queue.length;
@@ -576,6 +604,8 @@ function syncQueueSelectionControls(queue) {
     });
   }
   queueList?.classList?.toggle?.("has-selection", selectedCount > 0);
+  const bulk = $("#queue-bulk-actions");
+  if (bulk) bulk.hidden = selectedCount === 0;
   if (selectedLabel) {
     selectedLabel.textContent = selectedCount ? `已選取 ${selectedCount} 首歌曲` : "未選取歌曲";
     selectedLabel.hidden = selectedCount === 0;
@@ -1108,12 +1138,54 @@ function updatePlaylistTrackTitle(name, source) {
   });
 }
 
+const YOUTUBE_VIDEO_ID = /(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+
+function youtubeVideoId(source) {
+  return String(source || "").match(YOUTUBE_VIDEO_ID)?.[1] || "";
+}
+
+// like the reference players: four different videos make a 2x2 mosaic, fewer show the first one
+function playlistCoverIds(playlist) {
+  const ids = [];
+  for (const track of playlist?.tracks || []) {
+    const id = youtubeVideoId(playlistTrackSource(track));
+    if (id && !ids.includes(id)) ids.push(id);
+    if (ids.length === 4) break;
+  }
+  return ids.length === 4 ? ids : ids.slice(0, 1);
+}
+
+function setCoverMosaic(box, playlist) {
+  if (typeof box?.querySelector !== "function") return;
+  const ids = playlistCoverIds(playlist);
+  const key = ids.join(",");
+  if (box.dataset?.mosaic === key) return;
+  if (box.dataset) box.dataset.mosaic = key;
+  box.querySelector(".cover-mosaic")?.remove?.();
+  box.classList?.toggle?.("has-art", ids.length > 0);
+  if (!ids.length) return;
+  const mosaic = document.createElement("span");
+  mosaic.className = `cover-mosaic${ids.length === 4 ? " is-grid" : ""}`;
+  ids.forEach(id => {
+    const image = document.createElement("img");
+    image.alt = "";
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.onerror = () => image.classList?.add?.("is-missing");
+    image.src = `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+    mosaic.append?.(image);
+  });
+  box.append?.(mosaic);
+}
+
 function renderPlaylistEditor() {
   const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
   const tracks = playlist?.tracks || [];
   $("#playlist-title").textContent = playlist?.name || "選擇播放清單";
   $("#playlist-count").textContent = `${tracks.length} 首`;
-  $("#playlist-cover")?.style?.setProperty?.("--tile-hue", String(playlistHue(playlist?.name)));
+  const cover = $("#playlist-cover");
+  cover?.style?.setProperty?.("--tile-hue", String(playlistHue(playlist?.name)));
+  setCoverMosaic(cover, playlist);
   $("#playlist-empty").hidden = tracks.length > 0;
   $("#playlist-add-form").querySelectorAll("input, button").forEach(control => { control.disabled = state.mutationBusy || !playlist; });
   $("#playlist-queue-all").disabled = state.mutationBusy || !playlist || tracks.length === 0;
@@ -1203,8 +1275,10 @@ function renderPlaylists() {
     const active = playlist.name === state.currentPlaylist;
     button.className = `playlist-tab${active ? " is-active" : ""}`;
     button.type = "button";
-    button.innerHTML = '<span class="playlist-tab-name"></span><small class="playlist-tab-count"></small>';
-    button.dataset.initial = Array.from(playlist.name.trim())[0] || "#";
+    button.innerHTML = '<span class="playlist-tab-art" aria-hidden="true"></span><span class="playlist-tab-name"></span><small class="playlist-tab-count"></small>';
+    const art = $(".playlist-tab-art", button);
+    if (art?.dataset) art.dataset.initial = Array.from(playlist.name.trim())[0] || "#";
+    setCoverMosaic(art, playlist);
     button.style?.setProperty?.("--tile-hue", String(playlistHue(playlist.name)));
     button.setAttribute?.("aria-pressed", String(active));
     $(".playlist-tab-name", button).textContent = playlist.name;
@@ -1490,6 +1564,107 @@ async function requestRestart(mode) {
   }
 }
 
+function isCompactLayout() {
+  return Boolean(window.matchMedia?.("(max-width: 860px)")?.matches);
+}
+
+function isPlayerOpen() {
+  const shell = $("#app-shell");
+  return Boolean(shell?.classList?.contains?.("is-player-open") && !shell.classList.contains("is-player-closing"));
+}
+
+// the open sheet covers the page, so everything behind it leaves the tab order
+const SHEET_BACKGROUND = [".sidebar", ".main", ".queue-panel"];
+
+function setPlayerOpen(open, { fromHistory = false } = {}) {
+  const shell = $("#app-shell");
+  if (!shell?.classList || open === isPlayerOpen()) return;
+  clearTimeout(state.sheetTimer);
+  SHEET_BACKGROUND.forEach(selector => { const node = $(selector); if (node) node.inert = open; });
+  const track = $("#bar-track");
+  track?.setAttribute?.("aria-expanded", String(open));
+  if (track) track.tabIndex = open ? -1 : 0;
+  const bar = $("#player-bar");
+  if (open) {
+    bar?.setAttribute?.("role", "dialog");
+    bar?.setAttribute?.("aria-modal", "true");
+    bar?.setAttribute?.("aria-labelledby", "sheet-title");
+  } else {
+    ["role", "aria-modal", "aria-labelledby"].forEach(name => bar?.removeAttribute?.(name));
+  }
+  if (open) {
+    shell.classList.remove("is-player-closing");
+    shell.classList.add("is-player-open");
+    if (!fromHistory) globalThis.history?.pushState?.({ playerSheet: true }, "");
+    $("#player-collapse")?.focus?.();
+    return;
+  }
+  const finish = () => {
+    shell.classList.remove("is-player-open", "is-player-closing");
+    $("#player-bar")?.style?.removeProperty?.("--sheet-drag");
+    $("#bar-track")?.focus?.({ preventScroll: true });
+  };
+  if (!fromHistory && globalThis.history?.state?.playerSheet) globalThis.history.back();
+  if (prefersReducedMotion()) { finish(); return; }
+  shell.classList.add("is-player-closing");
+  state.sheetTimer = setTimeout(finish, 250);
+}
+
+function setupPlayerSheet() {
+  const bar = $("#player-bar");
+  const track = $("#bar-track");
+  if (typeof bar?.addEventListener !== "function" || typeof track?.addEventListener !== "function") return;
+  const syncTrackRole = () => {
+    if (isCompactLayout()) {
+      track.setAttribute?.("aria-controls", "player-bar");
+      track.setAttribute?.("aria-expanded", String(isPlayerOpen()));
+    } else {
+      track.removeAttribute?.("aria-controls");
+      track.removeAttribute?.("aria-expanded");
+    }
+  };
+  syncTrackRole();
+  // on a phone the bar opens the full player; on desktop it shows the now-playing stage
+  track.addEventListener("click", () => {
+    // the click that ends a drag gesture is not a tap
+    if (performance.now() - (state.sheetDragEnd || 0) < 350) return;
+    if (isPlayerOpen()) return;
+    if (isCompactLayout()) setPlayerOpen(true);
+    else switchPage("dashboard");
+  });
+  $("#player-collapse")?.addEventListener?.("click", () => setPlayerOpen(false));
+  // pull the sheet down from its header or cover to close it
+  let drag = null;
+  bar.addEventListener("pointerdown", event => {
+    if (!isPlayerOpen() || event.button > 0) return;
+    if (!event.target?.closest?.(".sheet-head, .bar-track") || event.target.closest(".sheet-collapse")) return;
+    drag = { id: event.pointerId, startY: event.clientY, dy: 0 };
+    bar.setPointerCapture?.(event.pointerId);
+    bar.classList.add("is-dragging");
+  });
+  bar.addEventListener("pointermove", event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    drag.dy = Math.max(0, event.clientY - drag.startY);
+    bar.style.setProperty("--sheet-drag", `${drag.dy}px`);
+  });
+  const release = event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const { dy } = drag;
+    drag = null;
+    bar.classList.remove("is-dragging");
+    state.sheetDragEnd = dy > 6 ? performance.now() : 0;
+    if (dy > 110) { setPlayerOpen(false); return; }
+    bar.style.removeProperty("--sheet-drag");
+  };
+  bar.addEventListener("pointerup", release);
+  bar.addEventListener("pointercancel", release);
+  window.addEventListener?.("popstate", () => { if (isPlayerOpen()) setPlayerOpen(false, { fromHistory: true }); });
+  window.matchMedia?.("(max-width: 860px)")?.addEventListener?.("change", event => {
+    if (!event.matches && isPlayerOpen()) setPlayerOpen(false);
+    syncTrackRole();
+  });
+}
+
 function isTypingTarget(target) {
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
 }
@@ -1498,6 +1673,7 @@ function isTypingTarget(target) {
 function handleShortcut(event) {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
   if ($("#queue-playlist-dialog")?.open) return;
+  if (event.key === "Escape" && isPlayerOpen()) { setPlayerOpen(false); return; }
   const target = event.target;
   if (isTypingTarget(target)) return;
   if (event.key === "/") {
@@ -1580,6 +1756,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#permission-add-group").addEventListener("click", () => permissionGroupAction("create"));
   $("#refresh-logs").addEventListener("click", loadLogs); $("#log-level").addEventListener("change", renderLogs); $("#log-search").addEventListener("input", renderLogs);
   setupQueueDragScroll();
+  setupPlayerSheet();
   document.addEventListener("keydown", handleShortcut);
   window.addEventListener?.("resize", () => requestAnimationFrame(updateTrackTitleOverflow));
   requestAnimationFrame(updateTrackTitleOverflow);

@@ -354,8 +354,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="progress-track"', html)
         self.assertIn('id="volume-icon"', html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=19', html)
-        self.assertIn('/assets/app.js?v=23', html)
+        self.assertIn('/assets/styles.css?v=20', html)
+        self.assertIn('/assets/app.js?v=24', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -1397,6 +1397,49 @@ domListeners.DOMContentLoaded();
     throw new Error("all queue request used the wrong guild");
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_playlist_cover_mosaic_uses_distinct_youtube_videos(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const context = {
+  document: { addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; } },
+  window: {},
+  console,
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout() {},
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+const ids = tracks => vm.runInContext(`playlistCoverIds(${JSON.stringify({ tracks })}).join(",")`, context);
+
+const four = ids([
+  "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+  { source: "https://youtu.be/aaaaaaaaaaa", title: "duplicate" },
+  "ytsearch:not a video",
+  { source: "https://music.youtube.com/watch?v=bbbbbbbbbbb&list=x", title: "B" },
+  "https://www.youtube.com/shorts/ccccccccccc",
+  "https://www.youtube.com/watch?list=PL1&v=ddddddddddd",
+  "https://www.youtube.com/watch?v=eeeeeeeeeee",
+]);
+if (four !== "aaaaaaaaaaa,bbbbbbbbbbb,ccccccccccc,ddddddddddd") throw new Error(`mosaic ids: ${four}`);
+
+const single = ids(["https://youtu.be/aaaaaaaaaaa", "https://youtu.be/bbbbbbbbbbb", "preview://x"]);
+if (single !== "aaaaaaaaaaa") throw new Error(`fewer than four should use the first cover: ${single}`);
+
+if (ids(["preview://x", "https://open.spotify.com/track/1"]) !== "") throw new Error("non-video sources must keep the monogram");
 """
         result = subprocess.run(
             ["node", "-e", harness, str(app_js)],
