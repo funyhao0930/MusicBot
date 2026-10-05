@@ -354,8 +354,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="progress-track"', html)
         self.assertIn('id="volume-icon"', html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=17', html)
-        self.assertIn('/assets/app.js?v=21', html)
+        self.assertIn('/assets/styles.css?v=19', html)
+        self.assertIn('/assets/app.js?v=23', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -382,6 +382,13 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.content_type, "image/webp")
         self.assertTrue((await response.read()).startswith(b"RIFF"))
+
+        # the self-hosted UI face must be served as bytes, not decoded as text
+        self.assertIn('/assets/figtree-latin-wght.woff2', html)
+        response = await self.client.get("/assets/figtree-latin-wght.woff2")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.content_type, "font/woff2")
+        self.assertTrue((await response.read()).startswith(b"wOF2"))
 
         response = await self.client.get("/assets/app.js")
         self.assertEqual(response.status, 200)

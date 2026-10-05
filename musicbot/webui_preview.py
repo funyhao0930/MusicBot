@@ -18,6 +18,8 @@ ASSET_DIR = Path(__file__).with_name("webui_assets")
 ASSET_CONTENT_TYPES = {
     "styles.css": "text/css",
     "app.js": "application/javascript",
+    "figtree-latin-wght.woff2": "font/woff2",
+    "figtree-latin-ext-wght.woff2": "font/woff2",
     "icon-shuffle.svg": "image/svg+xml",
     "icon-skip-previous.svg": "image/svg+xml",
     "icon-play.svg": "image/svg+xml",

@@ -40,22 +40,23 @@ const PLAY_PAUSE_PATHS = {
   play: ["M7 4.5 L12.5 8 L12.5 16 L7 19.5 Z", "M12.5 8 L19.5 12 L19.5 12 L12.5 16 Z"],
   pause: ["M6.5 5 L10.2 5 L10.2 19 L6.5 19 Z", "M13.8 5 L17.5 5 L17.5 19 L13.8 19 Z"],
 };
-const TITLE_ANIMATED_CHARS = 48;
 const ADD_DONE_ICON = '<svg class="done-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const QUEUE_ACTION_ICONS = {
   up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
-  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>',
-  remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6M8 6V4h8v2M10 11v6M14 11v6"/></svg>',
+  queue: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>',
+  remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
 };
+const NOTE_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+const THUMB_PLAY_ICON = '<span class="thumb-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg></span>';
+// YouTube's 4:3 thumbnails letterbox 16:9 videos; those get zoomed past the bars
+const LETTERBOXED_THUMBNAIL = /\/(?:hq|sd)?default\.(?:jpg|webp)/;
 const QUEUE_SCROLL_EDGE = 64;
 let queueDragPoint = null;
 let queueDragFrame = null;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-
-const SPOTLIGHT_SELECTOR = ".now-playing, .queue-panel, .settings-group, .playlist-workbench";
 
 function prefersReducedMotion() {
   return Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
@@ -68,80 +69,14 @@ function replayAnimation(node, className) {
   node.classList.add(className);
 }
 
-function positionNavIndicator() {
-  const nav = $("#main-nav");
-  if (typeof nav?.querySelector !== "function") return;
-  const active = $(".nav-item.is-active", nav);
-  const indicator = $(".nav-indicator", nav);
-  if (!active || !indicator?.style) return;
-  indicator.style.setProperty("--ind-x", `${active.offsetLeft}px`);
-  indicator.style.setProperty("--ind-y", `${active.offsetTop}px`);
-  indicator.style.setProperty("--ind-w", `${active.offsetWidth}px`);
-  indicator.style.setProperty("--ind-h", `${active.offsetHeight}px`);
-  if (!indicator.classList.contains("is-ready")) requestAnimationFrame(() => indicator.classList.add("is-ready"));
+function isLetterboxed(url) {
+  return LETTERBOXED_THUMBNAIL.test(String(url || ""));
 }
 
-function setupNavIndicator() {
-  const nav = $("#main-nav");
-  if (typeof nav?.querySelector !== "function" || typeof nav.prepend !== "function" || $(".nav-indicator", nav)) return;
-  const indicator = document.createElement("span");
-  indicator.className = "nav-indicator";
-  indicator.setAttribute("aria-hidden", "true");
-  nav.prepend(indicator);
-  nav.classList.add("has-indicator");
-  // nav items rise in on load; measure after they settle
-  setTimeout(positionNavIndicator, 650);
-  positionNavIndicator();
-}
-
-function setupSpotlight() {
-  document.addEventListener("pointermove", event => {
-    const card = event.target?.closest?.(SPOTLIGHT_SELECTOR);
-    if (!card) return;
-    const rect = card.getBoundingClientRect();
-    card.style.setProperty("--mx", `${event.clientX - rect.left}px`);
-    card.style.setProperty("--my", `${event.clientY - rect.top}px`);
-  }, { passive: true });
-}
-
-// cover follows the pointer in 3D with a moving highlight
-function setupArtTilt() {
-  const stage = $("#art-stage");
-  if (typeof stage?.addEventListener !== "function" || !stage.style?.setProperty) return;
-  stage.addEventListener("pointermove", event => {
-    if (prefersReducedMotion() || event.pointerType === "touch") return;
-    const rect = stage.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = (event.clientY - rect.top) / rect.height;
-    stage.classList.add("is-tracking");
-    stage.style.setProperty("--tilt-x", `${((.5 - y) * 16).toFixed(2)}deg`);
-    stage.style.setProperty("--tilt-y", `${((x - .5) * 16).toFixed(2)}deg`);
-    stage.style.setProperty("--sheen-x", `${Math.round(x * 100)}%`);
-    stage.style.setProperty("--sheen-y", `${Math.round(y * 100)}%`);
-  }, { passive: true });
-  stage.addEventListener("pointerleave", () => {
-    stage.classList.remove("is-tracking");
-    ["--tilt-x", "--tilt-y", "--sheen-x", "--sheen-y"].forEach(name => stage.style.removeProperty(name));
-  });
-}
-
-// the play button leans a few pixels toward the pointer
-function setupPlayMagnet() {
-  const magnet = $("#play-magnet");
-  const button = $("#play-toggle");
-  if (typeof magnet?.addEventListener !== "function" || !button?.style?.setProperty) return;
-  magnet.addEventListener("pointermove", event => {
-    if (prefersReducedMotion() || event.pointerType === "touch" || button.disabled) return;
-    const rect = magnet.getBoundingClientRect();
-    button.classList.add("is-magnet");
-    button.style.setProperty("--mag-x", `${(((event.clientX - rect.left) / rect.width - .5) * 14).toFixed(1)}px`);
-    button.style.setProperty("--mag-y", `${(((event.clientY - rect.top) / rect.height - .5) * 14).toFixed(1)}px`);
-  }, { passive: true });
-  magnet.addEventListener("pointerleave", () => {
-    button.classList.remove("is-magnet");
-    button.style.removeProperty("--mag-x");
-    button.style.removeProperty("--mag-y");
-  });
+function playlistHue(name) {
+  let hash = 0;
+  for (const char of String(name || "")) hash = (hash * 31 + char.codePointAt(0)) % 360;
+  return hash;
 }
 
 function kickTransportGlyph(button) {
@@ -152,8 +87,6 @@ function kickTransportGlyph(button) {
 function setProgressVisual(seconds, total) {
   const percent = total > 0 ? Math.min(100, Math.max(0, seconds / total * 100)) : 0;
   $("#progress-track")?.style?.setProperty?.("--progress-fill", `${percent}%`);
-  const tip = $("#progress-tip");
-  if (tip) tip.textContent = formatTime(seconds);
 }
 
 function setVolumeVisual(volume) {
@@ -207,12 +140,12 @@ function animateQueueReflow(rows, previousRects) {
   });
 }
 
-const pageMeta = {
-  dashboard: ["NOW PLAYING", "今晚播什麼？"],
-  playlists: ["AUTOPLAY", "播放清單"],
-  settings: ["設定管理", "機器人設定"],
-  permissions: ["存取控制", "權限群組"],
-  logs: ["RUNTIME", "執行日誌"],
+const pageTitles = {
+  dashboard: "今晚播什麼？",
+  playlists: "播放清單",
+  settings: "機器人設定",
+  permissions: "權限群組",
+  logs: "執行日誌",
 };
 
 function formatTime(value) {
@@ -318,14 +251,21 @@ function switchPage(name) {
   if (isPublicMode() && next.hasAttribute?.("data-local-only")) return;
   current?.classList.add("is-leaving");
   current?.classList.remove("is-active");
-  setTimeout(() => current?.classList.remove("is-leaving"), 140);
+  setTimeout(() => current?.classList.remove("is-leaving"), 150);
   next.classList.add("is-active");
-  $$(".nav-item").forEach(item => item.classList.toggle("is-active", item.dataset.page === name));
-  positionNavIndicator();
-  $("#page-eyebrow").textContent = pageMeta[name][0];
-  $("#page-title").textContent = pageMeta[name][1];
-  replayAnimation($("#page-eyebrow"), "is-swapping");
-  replayAnimation($("#page-title"), "is-swapping");
+  const shell = $("#app-shell");
+  if (shell?.dataset) shell.dataset.page = name;
+  $$(".nav-item").forEach(item => {
+    const active = item.dataset.page === name;
+    item.classList.toggle("is-active", active);
+    if (active) item.setAttribute?.("aria-current", "page");
+    else item.removeAttribute?.("aria-current");
+  });
+  const main = $("#main");
+  if (main && typeof main.scrollTo === "function") main.scrollTo({ top: 0 });
+  const title = $("#page-title");
+  if (title) title.textContent = pageTitles[name];
+  replayAnimation(title, "is-swapping");
   if (name === "playlists") loadPlaylists();
   if (name === "settings") loadSettings();
   if (name === "logs") loadLogs();
@@ -354,8 +294,70 @@ function renderGuilds(guilds) {
   state.guildId = candidate;
 }
 
+function setBarArtwork(thumbnail, hasTrack) {
+  const image = $("#bar-image");
+  if (!image) return;
+  // a track without artwork borrows the same penguin stand-in as the big cover
+  const url = thumbnail || (hasTrack ? STAND_IN_ART : "");
+  $("#bar-art")?.classList?.toggle?.("is-letterboxed", isLetterboxed(url));
+  if (url) {
+    let triedStandIn = url === STAND_IN_ART;
+    image.onerror = () => {
+      if (hasTrack && !triedStandIn) {
+        triedStandIn = true;
+        image.src = STAND_IN_ART;
+        return;
+      }
+      image.hidden = true;
+    };
+    image.onload = () => { image.hidden = false; };
+    image.hidden = true;
+    image.src = url;
+  } else {
+    image.onload = null;
+    image.onerror = null;
+    image.removeAttribute?.("src");
+    image.hidden = true;
+  }
+}
+
+const STAND_IN_ART = "/assets/meme-dance.webp";
+
+// the ambient light keeps two layers: the next cover fades in over the current one once it has loaded
+function setBackdropImage(url) {
+  const backdrop = $("#np-backdrop");
+  if (typeof backdrop?.querySelectorAll !== "function") return;
+  const layers = [...backdrop.querySelectorAll(".np-layer")];
+  if (layers.length < 2) return;
+  const active = layers.find(layer => layer.classList.contains("is-active")) || layers[0];
+  if ((active.dataset.image || STAND_IN_ART) === url) return;
+  state.backdropImage = url;
+  const swap = () => {
+    if (state.backdropImage !== url) return;
+    const next = layers.find(layer => layer !== active);
+    next.dataset.image = url;
+    next.style.backgroundImage = `url(${JSON.stringify(url)})`;
+    active.classList.remove("is-active");
+    next.classList.add("is-active");
+  };
+  if (typeof Image !== "function") { swap(); return; }
+  const probe = new Image();
+  probe.onload = swap;
+  probe.onerror = () => {
+    if (state.backdropImage === url && url !== STAND_IN_ART) setBackdropImage(STAND_IN_ART);
+  };
+  probe.src = url;
+}
+
+// the signature moment: the cover leaves in the skip direction, then the next one springs in
+// from the other side while the ambient light crossfades to it
 function setArtwork(entry, changed) {
   const art = $("#album-art");
+  const thumbnail = entry?.thumbnail || "";
+  // polling re-renders every two seconds; only touch the artwork when it really changes
+  const artworkKey = entry ? thumbnail || "stand-in" : "";
+  if (!changed && state.artworkKey === artworkKey) return;
+  state.artworkKey = artworkKey;
   const back = state.skipDirection < 0;
   if (changed) {
     art.classList.toggle("is-back", back);
@@ -364,7 +366,8 @@ function setArtwork(entry, changed) {
   setTimeout(() => {
     const image = $("#album-image");
     const fallback = $("#album-fallback");
-    if (entry?.thumbnail) {
+    art.classList.toggle("is-letterboxed", isLetterboxed(thumbnail));
+    if (thumbnail) {
       image.onerror = () => {
         image.hidden = true;
         image.removeAttribute("src");
@@ -374,26 +377,25 @@ function setArtwork(entry, changed) {
         image.hidden = false;
         fallback.hidden = true;
       };
-      image.src = entry.thumbnail;
-      image.alt = `${entry.title} 封面`;
-      $("#art-stage")?.style?.setProperty?.("--art-image", `url(${JSON.stringify(entry.thumbnail)})`);
       image.hidden = true;
       fallback.hidden = false;
+      image.src = thumbnail;
+      image.alt = `${entry.title} 封面`;
     } else {
       image.onload = null;
       image.onerror = null;
       image.removeAttribute("src");
       image.hidden = true;
       fallback.hidden = false;
-      $("#art-stage")?.style?.removeProperty?.("--art-image");
     }
+    setBarArtwork(thumbnail, Boolean(entry));
+    setBackdropImage(thumbnail || STAND_IN_ART);
     art.classList.remove("is-changing", "is-back");
     if (changed && !prefersReducedMotion()) {
       art.classList.remove("enter-next", "enter-prev");
       replayAnimation(art, back ? "enter-prev" : "enter-next");
-      replayAnimation($(".wave-strip"), "is-kicking");
     }
-  }, changed ? 160 : 0);
+  }, changed ? 170 : 0);
 }
 
 function updateTrackTitleOverflow() {
@@ -425,25 +427,35 @@ function setTrackTitle(value) {
   if (title.textContent === nextTitle) return;
 
   const hadTitle = Boolean(title.textContent);
-  if (hadTitle && !prefersReducedMotion() && typeof title.replaceChildren === "function") {
-    // each character rises in on its own beat; very long titles only stagger the first part
-    const chars = Array.from(nextTitle);
-    const spans = chars.slice(0, TITLE_ANIMATED_CHARS).map((char, index) => {
-      const span = document.createElement("span");
-      span.className = "ch";
-      span.textContent = char;
-      span.style?.setProperty?.("--d", `${180 + index * 28}ms`);
-      return span;
-    });
-    const rest = chars.slice(TITLE_ANIMATED_CHARS).join("");
-    title.replaceChildren(...spans);
-    if (rest) title.append(rest);
-  } else {
-    title.textContent = nextTitle;
-  }
-  if (hadTitle) replayAnimation($(".track-copy"), "is-entering");
+  title.textContent = nextTitle;
+  if (hadTitle && !prefersReducedMotion()) replayAnimation($(".track-copy"), "is-entering");
   viewport.classList.remove("is-overflowing");
   requestAnimationFrame(updateTrackTitleOverflow);
+}
+
+function renderNowPlayingState(player) {
+  const chip = $("#np-state");
+  if (!chip?.classList) return;
+  const status = !player?.current ? "idle" : player.state === "paused" ? "paused" : "playing";
+  chip.hidden = status === "idle";
+  chip.classList.toggle("is-playing", status === "playing");
+  const label = $("#np-state-text");
+  if (label) label.textContent = status === "paused" ? "已暫停" : "正在播放";
+}
+
+function renderBarTrack(player) {
+  const current = player?.current;
+  const title = $("#bar-title");
+  if (title) {
+    title.textContent = current?.title || "尚未播放歌曲";
+    title.title = current?.title || "";
+  }
+  const meta = $("#bar-meta");
+  if (meta) meta.textContent = current ? `由 ${current.requested_by} 加入` : "";
+  if (typeof document.title === "string") {
+    state.baseTitle = state.baseTitle || document.title;
+    document.title = current && player.state === "playing" ? `${current.title} · ${state.baseTitle}` : state.baseTitle;
+  }
 }
 
 function renderPlayer(player) {
@@ -457,8 +469,11 @@ function renderPlayer(player) {
   const playing = player?.state === "playing";
   $("#art-stage").classList.toggle("is-playing", playing);
   $("#now-playing")?.classList?.toggle?.("is-playing", playing);
+  $("#app-shell")?.classList?.toggle?.("is-playing", playing);
   setTrackTitle(player?.current?.title);
   $("#track-meta").textContent = player?.current ? `由 ${player.current.requested_by} 加入 · ${player.voice_channel?.name || "未連接語音頻道"}` : "加入一首歌，讓今晚有點聲音。";
+  renderNowPlayingState(player);
+  renderBarTrack(player);
   setArtwork(player?.current, changed);
 
   const total = player?.current?.duration || 0;
@@ -560,9 +575,25 @@ function syncQueueSelectionControls(queue) {
       checkbox.disabled = state.mutationBusy;
     });
   }
-  if (selectedLabel) selectedLabel.textContent = selectedCount ? `已選取 ${selectedCount} 首歌曲` : "未選取歌曲";
-  if (addButton) addButton.disabled = state.mutationBusy || selectedCount === 0;
+  queueList?.classList?.toggle?.("has-selection", selectedCount > 0);
+  if (selectedLabel) {
+    selectedLabel.textContent = selectedCount ? `已選取 ${selectedCount} 首歌曲` : "未選取歌曲";
+    selectedLabel.hidden = selectedCount === 0;
+  }
+  if (addButton) {
+    addButton.disabled = state.mutationBusy || selectedCount === 0;
+    addButton.hidden = selectedCount === 0;
+  }
   $("#queue-playlist-dialog-count").textContent = `已選取 ${selectedCount} 首歌曲`;
+}
+
+function formatQueueTotal(queue) {
+  const seconds = queue.reduce((sum, entry) => sum + (Number(entry.duration) || 0), 0);
+  if (seconds <= 0) return "";
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (minutes < 60) return `約 ${minutes} 分鐘`;
+  const rest = minutes % 60;
+  return `約 ${Math.floor(minutes / 60)} 小時${rest ? ` ${rest} 分` : ""}`;
 }
 
 function clearQueueSelection() {
@@ -573,6 +604,8 @@ function clearQueueSelection() {
 function renderQueue(queue) {
   const list = $("#queue-list");
   $("#queue-count").textContent = `${queue.length} 首`;
+  const total = $("#queue-total");
+  if (total) total.textContent = formatQueueTotal(queue);
   $("#queue-clear").disabled = state.mutationBusy || queue.length === 0;
   $("#queue-empty").hidden = queue.length > 0;
   list.hidden = queue.length === 0;
@@ -604,16 +637,34 @@ function renderQueue(queue) {
     row.dataset.key = `${baseKey}\u0000${keyCounts[baseKey]}`;
     row.style?.setProperty?.("--i", String(index));
     const disabled = state.mutationBusy ? " disabled" : "";
-    row.innerHTML = `<input class="queue-select-input" type="checkbox" aria-label="選取第 ${index + 1} 首歌曲"${disabled}><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><button class="queue-copy queue-play-target" type="button" aria-label="播放第 ${index + 1} 首：${entry.title}"${disabled}><strong></strong><small></small></button><div class="queue-row-actions"><button class="queue-move-up icon-button" type="button" aria-label="向上移動" title="向上移動"${state.mutationBusy || index === 0 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.up}</button><button class="queue-move-down icon-button" type="button" aria-label="向下移動" title="向下移動"${state.mutationBusy || index === queue.length - 1 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.down}</button><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></div>`;
+    row.innerHTML = `<span class="queue-lead"><span class="queue-index">${index + 1}</span><input class="queue-select-input" type="checkbox"${disabled}></span><span class="queue-thumb">${NOTE_ICON}${THUMB_PLAY_ICON}</span><button class="queue-copy queue-play-target" type="button"${disabled}><strong></strong><small><span class="queue-meta-time"></span><span class="queue-requester"></span></small></button><span class="queue-row-end"><span class="queue-duration"></span><span class="queue-row-actions"><button class="queue-move-up icon-button" type="button" aria-label="向上移動" title="向上移動"${state.mutationBusy || index === 0 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.up}</button><button class="queue-move-down icon-button" type="button" aria-label="向下移動" title="向下移動"${state.mutationBusy || index === queue.length - 1 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.down}</button><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></span></span>`;
     const checkbox = $(".queue-select-input", row);
+    // titles come from the media source, so they are set as text or attributes, never as markup
+    checkbox.setAttribute?.("aria-label", `選取第 ${index + 1} 首歌曲`);
+    $(".queue-play-target", row).setAttribute?.("aria-label", `播放第 ${index + 1} 首：${entry.title}`);
     checkbox.checked = state.selectedQueueIndexes.has(index);
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.selectedQueueIndexes.add(index);
       else state.selectedQueueIndexes.delete(index);
       syncQueueSelectionControls(queue);
     });
-    $("strong", row).textContent = entry.title;
-    $("small", row).textContent = `${formatTime(entry.duration)} · ${entry.requested_by}`;
+    if (entry.thumbnail) {
+      const thumb = $(".queue-thumb", row);
+      const image = document.createElement("img");
+      image.alt = "";
+      image.loading = "lazy";
+      image.decoding = "async";
+      image.onerror = () => image.remove?.();
+      image.src = entry.thumbnail;
+      thumb?.classList?.toggle?.("is-letterboxed", isLetterboxed(entry.thumbnail));
+      thumb?.prepend?.(image);
+    }
+    const title = $("strong", row);
+    title.textContent = entry.title;
+    title.title = entry.title;
+    $(".queue-requester", row).textContent = `由 ${entry.requested_by} 加入`;
+    $(".queue-meta-time", row).textContent = `${formatTime(entry.duration)} · `;
+    $(".queue-duration", row).textContent = formatTime(entry.duration);
     $(".queue-play-target", row).addEventListener("click", () => playQueueItem(index));
     $(".queue-move-up", row).addEventListener("click", () => reorderQueue(index, index - 1));
     $(".queue-move-down", row).addEventListener("click", () => reorderQueue(index, index + 1));
@@ -967,7 +1018,7 @@ function settingInput(option) {
     const span = document.createElement("span"); span.className = "sensitive-value"; span.textContent = "此值受保護，請手動編輯設定檔"; return span;
   }
   const input = document.createElement("input");
-  if (option.type === "boolean") { input.type = "checkbox"; input.checked = Boolean(option.value); }
+  if (option.type === "boolean") { input.type = "checkbox"; input.className = "switch"; input.checked = Boolean(option.value); }
   else { input.type = option.type === "number" || option.type === "integer" ? "number" : "text"; input.value = Array.isArray(option.value) ? option.value.join(", ") : option.value ?? ""; }
   input.disabled = !option.editable;
   return input;
@@ -987,7 +1038,7 @@ function renderSettings(options) {
       $("strong", row).textContent = option.display_option || option.option; $("p", row).textContent = option.display_comment || option.comment || "沒有額外說明";
       const control = $(".setting-control", row); const input = settingInput(option); control.append(input);
       if (option.editable && !option.sensitive) {
-        const save = document.createElement("button"); save.className = "button ghost"; save.type = "button"; save.textContent = "儲存";
+        const save = document.createElement("button"); save.className = "button secondary small"; save.type = "button"; save.textContent = "儲存";
         save.addEventListener("click", async () => {
           save.disabled = true; save.textContent = "儲存中";
           try {
@@ -1062,6 +1113,7 @@ function renderPlaylistEditor() {
   const tracks = playlist?.tracks || [];
   $("#playlist-title").textContent = playlist?.name || "選擇播放清單";
   $("#playlist-count").textContent = `${tracks.length} 首`;
+  $("#playlist-cover")?.style?.setProperty?.("--tile-hue", String(playlistHue(playlist?.name)));
   $("#playlist-empty").hidden = tracks.length > 0;
   $("#playlist-add-form").querySelectorAll("input, button").forEach(control => { control.disabled = state.mutationBusy || !playlist; });
   $("#playlist-queue-all").disabled = state.mutationBusy || !playlist || tracks.length === 0;
@@ -1081,8 +1133,9 @@ function renderPlaylistEditor() {
     row.className = "playlist-track";
     row.dataset.source = source;
     const disabled = state.mutationBusy ? " disabled" : "";
-    row.innerHTML = `<span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="playlist-track-copy"><strong></strong><small></small></div><div class="playlist-track-actions"><button class="playlist-queue icon-button" type="button" aria-label="加入佇列" title="加入佇列"${disabled}>${QUEUE_ACTION_ICONS.play}</button><button class="playlist-remove icon-button danger" type="button" aria-label="從播放清單移除" title="從播放清單移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></div>`;
+    row.innerHTML = `<span class="queue-index">${index + 1}</span><div class="playlist-track-copy"><strong></strong><small></small></div><div class="playlist-track-actions"><button class="playlist-queue icon-button" type="button" aria-label="加入佇列" title="加入佇列"${disabled}>${QUEUE_ACTION_ICONS.queue}</button><button class="playlist-remove icon-button danger" type="button" aria-label="從播放清單移除" title="從播放清單移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></div>`;
     $("strong", row).textContent = title;
+    $("strong", row).title = title;
     $("strong", row).classList.toggle("playlist-track-title-loading", titleState === "loading");
     $("small", row).textContent = source;
     const queueButton = $(".playlist-queue", row);
@@ -1123,7 +1176,7 @@ function renderPlaylistEditor() {
 
   if (playlist && visibleTracks.length < tracks.length) {
     const loadMore = document.createElement("button");
-    loadMore.className = "button ghost playlist-load-more";
+    loadMore.className = "button secondary playlist-load-more";
     loadMore.type = "button";
     loadMore.textContent = `顯示更多（剩餘 ${tracks.length - visibleTracks.length} 首）`;
     loadMore.addEventListener("click", () => {
@@ -1147,9 +1200,13 @@ function renderPlaylists() {
   const tabs = $("#playlist-tabs");
   tabs.replaceChildren(...state.playlists.map(playlist => {
     const button = document.createElement("button");
-    button.className = `playlist-tab${playlist.name === state.currentPlaylist ? " is-active" : ""}`;
+    const active = playlist.name === state.currentPlaylist;
+    button.className = `playlist-tab${active ? " is-active" : ""}`;
     button.type = "button";
     button.innerHTML = '<span class="playlist-tab-name"></span><small class="playlist-tab-count"></small>';
+    button.dataset.initial = Array.from(playlist.name.trim())[0] || "#";
+    button.style?.setProperty?.("--tile-hue", String(playlistHue(playlist.name)));
+    button.setAttribute?.("aria-pressed", String(active));
     $(".playlist-tab-name", button).textContent = playlist.name;
     $(".playlist-tab-count", button).textContent = `${playlist.tracks.length} 首`;
     button.addEventListener("click", () => {
@@ -1342,7 +1399,7 @@ function permissionControl(group, option, row) {
   if (!option.editable || option.sensitive) return;
 
   const save = document.createElement("button");
-  save.className = "button ghost";
+  save.className = "button secondary small";
   save.type = "button";
   save.textContent = "儲存";
   save.addEventListener("click", async () => {
@@ -1394,10 +1451,10 @@ async function loadPermissions() {
       heading.innerHTML = `<h3></h3><div class="group-actions"></div>`;
       $("h3", heading).textContent = group.display_name || group.name;
       const actions = $(".group-actions", heading);
-      const clone = document.createElement("button"); clone.className = "button ghost"; clone.textContent = "複製"; clone.addEventListener("click", () => permissionGroupAction("clone", group.name, group.display_name)); actions.append(clone);
+      const clone = document.createElement("button"); clone.className = "button secondary small"; clone.type = "button"; clone.textContent = "複製"; clone.addEventListener("click", () => permissionGroupAction("clone", group.name, group.display_name)); actions.append(clone);
       if (!["owner", "default"].includes(group.name.toLowerCase())) {
-        const rename = document.createElement("button"); rename.className = "button ghost"; rename.textContent = "重新命名"; rename.addEventListener("click", () => permissionGroupAction("rename", group.name, group.display_name)); actions.append(rename);
-        const remove = document.createElement("button"); remove.className = "button danger"; remove.textContent = "刪除"; remove.addEventListener("click", () => permissionGroupAction("delete", group.name, group.display_name)); actions.append(remove);
+        const rename = document.createElement("button"); rename.className = "button secondary small"; rename.type = "button"; rename.textContent = "重新命名"; rename.addEventListener("click", () => permissionGroupAction("rename", group.name, group.display_name)); actions.append(rename);
+        const remove = document.createElement("button"); remove.className = "button danger small"; remove.type = "button"; remove.textContent = "刪除"; remove.addEventListener("click", () => permissionGroupAction("delete", group.name, group.display_name)); actions.append(remove);
       }
       card.append(heading);
       group.options.forEach(option => {
@@ -1430,6 +1487,31 @@ async function requestRestart(mode) {
   } catch (error) {
     layer.hidden = true;
     toast(error.message, "error");
+  }
+}
+
+function isTypingTarget(target) {
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
+}
+
+// Space toggles playback and "/" jumps to the add-song field, the way streaming players do
+function handleShortcut(event) {
+  if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+  if ($("#queue-playlist-dialog")?.open) return;
+  const target = event.target;
+  if (isTypingTarget(target)) return;
+  if (event.key === "/") {
+    const input = $("#track-query");
+    if (!input || input.disabled || input.offsetParent === null) return;
+    event.preventDefault();
+    input.focus();
+    return;
+  }
+  if (event.code === "Space" && !target?.closest?.("button, a, [role='button']")) {
+    const toggle = $("#play-toggle");
+    if (!toggle || toggle.disabled) return;
+    event.preventDefault();
+    toggle.click();
   }
 }
 
@@ -1497,12 +1579,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#restart-full").addEventListener("click", () => requestRestart("full"));
   $("#permission-add-group").addEventListener("click", () => permissionGroupAction("create"));
   $("#refresh-logs").addEventListener("click", loadLogs); $("#log-level").addEventListener("change", renderLogs); $("#log-search").addEventListener("input", renderLogs);
-  setupNavIndicator();
-  setupSpotlight();
-  setupArtTilt();
-  setupPlayMagnet();
   setupQueueDragScroll();
-  window.addEventListener?.("resize", () => requestAnimationFrame(() => { updateTrackTitleOverflow(); positionNavIndicator(); }));
+  document.addEventListener("keydown", handleShortcut);
+  window.addEventListener?.("resize", () => requestAnimationFrame(updateTrackTitleOverflow));
   requestAnimationFrame(updateTrackTitleOverflow);
   refreshSnapshot(); setInterval(refreshSnapshot, 2000); requestAnimationFrame(animateProgress);
 });

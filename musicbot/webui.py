@@ -28,6 +28,8 @@ _LOG_SECRET_RE = re.compile(
 _ASSET_CONTENT_TYPES = {
     "styles.css": "text/css",
     "app.js": "application/javascript",
+    "figtree-latin-wght.woff2": "font/woff2",
+    "figtree-latin-ext-wght.woff2": "font/woff2",
     "icon-shuffle.svg": "image/svg+xml",
     "icon-skip-previous.svg": "image/svg+xml",
     "icon-play.svg": "image/svg+xml",
@@ -337,7 +339,7 @@ class MusicBotWebUI:
         if not asset.is_file():
             raise web.HTTPNotFound()
         content_type = _ASSET_CONTENT_TYPES[name]
-        if content_type == "image/webp":
+        if content_type in {"image/webp", "font/woff2"}:
             return web.Response(body=asset.read_bytes(), content_type=content_type)
         return web.Response(
             text=asset.read_text(encoding="utf-8"),
