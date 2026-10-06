@@ -55,6 +55,14 @@ _ASSET_CONTENT_TYPES = {
     "meme-idle.webp": "image/webp",
 }
 _PROTECTED_PERMISSION_GROUPS = {"owner", "default"}
+_WINDOWS_RESERVED_FILE_NAMES = {
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    *(f"com{number}" for number in range(1, 10)),
+    *(f"lpt{number}" for number in range(1, 10)),
+}
 WEBUI_REQUESTER_NAME = "網頁使用者"
 
 
@@ -268,7 +276,8 @@ class MusicBotWebUI:
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
         self._playlist_title_cache: Dict[str, str] = {}
-        self._playlist_title_semaphore = asyncio.Semaphore(6)
+        # bounds the metadata lookups that titles and playlist imports start at once
+        self._extraction_semaphore = asyncio.Semaphore(6)
 
     @web.middleware
     async def _security_middleware(
@@ -804,11 +813,21 @@ class MusicBotWebUI:
             raise ValueError("Playlist name must contain 1 to 80 characters")
         if name in {".", ".."} or ".." in name:
             raise ValueError("Playlist name cannot contain path traversal")
-        if any(char in name for char in "/\\\r\n\0") or any(
-            ord(char) < 32 for char in name
+        # ":" would also let "C:Name" resolve to another playlist's file on Windows.
+        if any(char in name for char in '/\\:*?"<>|') or any(
+            ord(char) < 32 or ord(char) == 127 for char in name
         ):
             raise ValueError("Playlist name contains invalid characters")
+        if name.split(".", 1)[0].strip().casefold() in _WINDOWS_RESERVED_FILE_NAMES:
+            raise ValueError("Playlist name is reserved by the file system")
         return name
+
+    def _existing_playlist(self, name: str) -> Any:
+        """Return a saved playlist without registering names that have no file."""
+        manager = self.bot.playlist_mgr
+        if not manager.playlist_exists(f"{name}.txt"):
+            raise LookupError("Playlist does not exist")
+        return manager.get_playlist(f"{name}.txt")
 
     async def _playlist_payload(self, name: str) -> Dict[str, Any]:
         playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
@@ -855,7 +874,7 @@ class MusicBotWebUI:
 
         title = source
         try:
-            async with self._playlist_title_semaphore:
+            async with self._extraction_semaphore:
                 info = await self.bot.downloader.extract_info(
                     source, download=False, process=True
                 )
@@ -871,11 +890,29 @@ class MusicBotWebUI:
         self._playlist_title_cache[source] = title
         return {"source": source, "title": title}
 
+    async def _extract_playlist_source(self, source: str) -> Any:
+        """Look up one saved track, or return None when it cannot be played."""
+        try:
+            async with self._extraction_semaphore:
+                return await self.bot.downloader.extract_info(
+                    source, download=False, process=True
+                )
+        except Exception:
+            log.debug(
+                "Skipping a playlist track that could not be looked up: %s",
+                source,
+                exc_info=True,
+            )
+            return None
+
     async def _handle_playlists(self, _request: web.Request) -> web.Response:
         manager = self.bot.playlist_mgr
         manager.discover_playlists()
         playlists = []
         for name in sorted(manager.playlist_names, key=str.casefold):
+            # names cached for a missing file are not playlists anyone can open
+            if not manager.playlist_exists(f"{name}.txt"):
+                continue
             playlists.append(await self._playlist_payload(name))
         return web.json_response({"ok": True, "playlists": playlists})
 
@@ -887,33 +924,40 @@ class MusicBotWebUI:
             guild_id = self._guild_id_from(body.get("guild_id"))
             player = self._player_for(guild_id)
             name = self._playlist_name(request.match_info["name"])
-            playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
+            playlist = self._existing_playlist(name)
             await playlist.load()
             sources = self._playlist_sources(playlist)
             if not sources:
                 raise ValueError("The playlist does not contain any tracks")
 
-            infos = []
-            for source in sources:
-                info = await self.bot.downloader.extract_info(
-                    source, download=False, process=True
-                )
-                if not info:
-                    raise ValueError("No playable result was found")
-                infos.append(info)
-
+            # one deleted or private video must not keep the rest of the list out
+            infos = await asyncio.gather(
+                *(self._extract_playlist_source(source) for source in sources)
+            )
             entries = []
+            skipped_count = 0
             for info in infos:
-                if bool(getattr(info, "has_entries", False)):
-                    imported, _position = await player.playlist.import_from_info(
-                        info, channel=None, author=None, head=False
+                if not info:
+                    skipped_count += 1
+                    continue
+                mark_web_request(info)
+                try:
+                    if bool(getattr(info, "has_entries", False)):
+                        imported, _position = await player.playlist.import_from_info(
+                            info, channel=None, author=None, head=False
+                        )
+                        entries.extend(imported)
+                    else:
+                        entry, _position = await player.playlist.add_entry_from_info(
+                            info, channel=None, author=None, head=False
+                        )
+                        entries.append(entry)
+                except Exception:
+                    log.debug(
+                        "Skipping a playlist track that could not be queued",
+                        exc_info=True,
                     )
-                    entries.extend(imported)
-                else:
-                    entry, _position = await player.playlist.add_entry_from_info(
-                        info, channel=None, author=None, head=False
-                    )
-                    entries.append(entry)
+                    skipped_count += 1
             if not entries:
                 raise ValueError("The playlist did not contain playable tracks")
 
@@ -930,6 +974,7 @@ class MusicBotWebUI:
             {
                 "ok": True,
                 "added_count": len(entries),
+                "skipped_count": skipped_count,
                 "queue": [entry_to_payload(e) for e in player.playlist.entries],
             }
         )
@@ -984,7 +1029,7 @@ class MusicBotWebUI:
     async def _handle_playlist_titles(self, request: web.Request) -> web.Response:
         try:
             name = self._playlist_name(request.match_info["name"])
-            playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
+            playlist = self._existing_playlist(name)
             await playlist.load()
             tracks = await asyncio.gather(
                 *(
@@ -994,6 +1039,8 @@ class MusicBotWebUI:
             )
         except (OSError, ValueError) as exc:
             return self._error(str(exc), status=400)
+        except LookupError as exc:
+            return self._error(str(exc), status=404)
 
         return web.json_response({"ok": True, "name": name, "tracks": tracks})
 
@@ -1001,7 +1048,7 @@ class MusicBotWebUI:
         try:
             name = self._playlist_name(request.match_info["name"])
             index = int(request.match_info["index"])
-            playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
+            playlist = self._existing_playlist(name)
             await playlist.load()
             sources = self._playlist_sources(playlist)
             if not 0 <= index < len(sources):
@@ -1009,6 +1056,8 @@ class MusicBotWebUI:
             track = await self._playlist_track_payload(sources[index])
         except (OSError, ValueError) as exc:
             return self._error(str(exc), status=400)
+        except LookupError as exc:
+            return self._error(str(exc), status=404)
 
         return web.json_response(
             {"ok": True, "name": name, "index": index, "track": track}
@@ -1045,14 +1094,17 @@ class MusicBotWebUI:
         try:
             name = self._playlist_name(request.match_info["name"])
             index = int(request.match_info["index"])
-            playlist = self.bot.playlist_mgr.get_playlist(f"{name}.txt")
+            playlist = self._existing_playlist(name)
             await playlist.load()
-            tracks = list(playlist)
+            # the index refers to the list this Web UI variant showed the browser
+            tracks = self._playlist_sources(playlist)
             if not 0 <= index < len(tracks):
                 raise ValueError("Playlist track index is outside the playlist")
             await playlist.remove_track(tracks[index], delete_from_ap=True)
         except (OSError, TypeError, ValueError) as exc:
             return self._error(str(exc), status=400)
+        except LookupError as exc:
+            return self._error(str(exc), status=404)
 
         return web.json_response(
             {"ok": True, "playlist": await self._playlist_payload(name)}

@@ -186,6 +186,9 @@ class _AutoPlaylistManager:
             self.playlists[name] = _AutoPlaylist(name)
         return self.playlists[name]
 
+    def playlist_exists(self, filename):
+        return Path(filename).stem in self.playlists
+
     def is_protected_playlist(self, filename):
         return Path(filename).stem in {"default", "history", "autoplaylist"}
 
@@ -1957,6 +1960,82 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
             json={"action": "create", "name": "../outside"},
             headers=self._headers(),
         )
+        self.assertEqual(response.status, 400)
+
+    async def test_playlist_name_rejects_names_windows_would_reinterpret(self):
+        # "C:default" would open default.txt on Windows and dodge the in-use check
+        for name in ("C:default", "a*b", 'say "hi"', "pipe|name", "CON", "nul.backup"):
+            with self.subTest(name=name):
+                response = await self.client.post(
+                    "/api/playlists",
+                    json={"action": "create", "name": name},
+                    headers=self._headers(),
+                )
+                self.assertEqual(response.status, 400)
+        self.assertEqual(list(self.bot.playlist_mgr.playlists), ["default"])
+
+    async def test_playlist_reads_do_not_create_missing_playlists(self):
+        requests = (
+            ("GET", "/api/playlists/ghost/titles"),
+            ("GET", "/api/playlists/ghost/titles/0"),
+            ("POST", "/api/playlists/ghost/queue"),
+            ("DELETE", "/api/playlists/ghost/0"),
+        )
+        for method, path in requests:
+            with self.subTest(method=method, path=path):
+                response = await self.client.request(
+                    method,
+                    path,
+                    json={"guild_id": 1} if method == "POST" else None,
+                    headers=self._headers(),
+                )
+                self.assertEqual(response.status, 404)
+        self.assertNotIn("ghost", self.bot.playlist_mgr.playlists)
+
+    async def test_playlist_list_skips_cached_names_without_a_file(self):
+        manager = self.bot.playlist_mgr
+        manager.get_playlist("ghost.txt")
+        manager.playlist_exists = lambda filename: Path(filename).stem != "ghost"
+
+        response = await self.client.get("/api/playlists")
+
+        self.assertEqual(response.status, 200)
+        names = [item["name"] for item in (await response.json())["playlists"]]
+        self.assertEqual(names, ["default"])
+
+    async def test_playlist_queue_add_skips_tracks_that_cannot_be_played(self):
+        self.bot.playlist_mgr.playlists["default"].data = [
+            "first track",
+            "deleted video",
+            "third track",
+        ]
+        self.bot.downloader.fail_queries.add("deleted video")
+
+        response = await self.client.post(
+            "/api/playlists/default/queue",
+            json={"guild_id": 1},
+            headers=self._headers(),
+        )
+
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["added_count"], 2)
+        self.assertEqual(payload["skipped_count"], 1)
+        self.assertEqual(
+            [entry["title"] for entry in payload["queue"][-2:]],
+            ["Result for first track", "Result for third track"],
+        )
+
+    async def test_playlist_queue_add_fails_when_no_track_can_be_played(self):
+        self.bot.playlist_mgr.playlists["default"].data = ["deleted video"]
+        self.bot.downloader.fail_queries.add("deleted video")
+
+        response = await self.client.post(
+            "/api/playlists/default/queue",
+            json={"guild_id": 1},
+            headers=self._headers(),
+        )
+
         self.assertEqual(response.status, 400)
 
 

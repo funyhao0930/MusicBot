@@ -30,6 +30,11 @@ _SAFE_CLIENT_ERRORS = {
     409: "目前狀態無法完成此操作。",
 }
 _WRITE_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
+# urllib (and so yt-dlp) silently drops tabs and newlines, which turns
+# "http\n://127.0.0.1/" back into a working URL after validation.
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+# yt-dlp's generic extractor turns schemeless "host.tld/path" input into a URL.
+_SCHEMELESS_URL = re.compile(r"[^\s/]+\.[^\s/]+/")
 _URL_SCHEME = re.compile(r"^([a-z][a-z0-9+.-]*):(.*)$", re.IGNORECASE)
 _YOUTUBE_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _YOUTUBE_HOSTS = {
@@ -45,14 +50,18 @@ def validate_public_media_input(raw_value: Any) -> str:
     value = str(raw_value or "").strip()
     if not value:
         raise ValueError("A search phrase or YouTube URL is required")
+    if _CONTROL_CHARACTERS.search(value):
+        raise ValueError("Public input cannot contain control characters")
     if value.startswith(("//", "\\\\")):
         raise ValueError("Scheme-relative URLs are not allowed")
 
     scheme_match = _URL_SCHEME.match(value)
-    if scheme_match and scheme_match.group(2).startswith((" ", "\t")):
+    if scheme_match and scheme_match.group(2).startswith(" "):
         return value
 
     if not scheme_match:
+        if _SCHEMELESS_URL.match(value):
+            raise ValueError("Public URLs must be approved YouTube URLs")
         authority = value.split("/", 1)[0]
         host_candidate = authority.rsplit(":", 1)[0].strip("[]").lower()
         try:
@@ -204,10 +213,20 @@ class MusicBotPublicWebUI(MusicBotWebUI):
         safe_sources = []
         for source in playlist:
             try:
-                safe_sources.append(validate_public_media_input(source))
+                validate_public_media_input(source)
             except ValueError:
                 log.warning("Public Web UI omitted an unsupported playlist source")
+                continue
+            # keep the stored text so removing a track finds the exact line
+            safe_sources.append(source)
         return safe_sources
+
+    def _playlist_can_delete(self, name: str) -> bool:
+        # The public proxy never forwards whole-playlist deletion.
+        return False
+
+    async def _handle_playlist_delete(self, request: web.Request) -> web.Response:
+        return self._error("Playlists cannot be deleted publicly", status=403)
 
     async def _handle_queue_add(self, request: web.Request) -> web.Response:
         try:
@@ -225,3 +244,17 @@ class MusicBotPublicWebUI(MusicBotWebUI):
         except ValueError as exc:
             return self._error(str(exc))
         return await super()._handle_playlists_post(request)
+
+    async def _handle_playlist_tracks_add(
+        self, request: web.Request
+    ) -> web.Response:
+        try:
+            body = await self._json_body(request)
+            tracks = body.get("tracks")
+            if isinstance(tracks, list):
+                for track in tracks:
+                    if isinstance(track, str):
+                        validate_public_media_input(track)
+        except ValueError as exc:
+            return self._error(str(exc))
+        return await super()._handle_playlist_tracks_add(request)

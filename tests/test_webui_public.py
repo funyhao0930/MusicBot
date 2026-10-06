@@ -41,6 +41,115 @@ class PublicRouteDefinitionTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validate_public_media_input(unsafe)
 
+    def test_public_media_input_rejects_text_that_yt_dlp_turns_into_urls(self) -> None:
+        from musicbot.webui_public import validate_public_media_input
+
+        for unsafe in (
+            # urllib drops tabs and newlines, so these become http://127.0.0.1:1/x
+            "http:\t//127.0.0.1:1/x",
+            "http\n://127.0.0.1:1/x",
+            "lofi\x00hip hop",
+            # yt-dlp prefixes https:// to "host.tld/path", spaces or not
+            "evil.com/a b",
+            "192.168.1.1.nip.io:8080/admin x",
+            "localtest.me/ x",
+        ):
+            with self.subTest(unsafe=unsafe):
+                with self.assertRaises(ValueError):
+                    validate_public_media_input(unsafe)
+
+        for search in ("Mr. Brightside", "AC/DC Back in Black", "Artist: Song title"):
+            with self.subTest(search=search):
+                self.assertEqual(validate_public_media_input(search), search)
+
+
+class PublicPlaylistAPITests(unittest.IsolatedAsyncioTestCase):
+    proxy_token = "proxy-token-for-tests"
+
+    async def asyncSetUp(self) -> None:
+        from musicbot.webui_public import MusicBotPublicWebUI
+        from tests.test_webui_extended import _AutoPlaylistManager, _Downloader
+
+        guild = SimpleNamespace(id=1, name="測試伺服器", unavailable=False)
+        self.manager = _AutoPlaylistManager()
+        self.manager.get_playlist("mix.txt").data = [
+            "https://soundcloud.com/artist/hidden-from-public",
+            "https://youtu.be/AAAAAAAAAAA",
+            "https://youtu.be/BBBBBBBBBBB",
+        ]
+        bot = SimpleNamespace(
+            guilds=[guild],
+            players={},
+            config=SimpleNamespace(register=SimpleNamespace(option_list=[])),
+            permissions=SimpleNamespace(groups={}),
+            downloader=_Downloader(),
+            playlist_mgr=self.manager,
+            server_data={},
+            _init_time=100.0,
+            init_ok=True,
+            network_outage=False,
+            latency=0.01,
+        )
+        self.ui = MusicBotPublicWebUI(bot, port=8766, proxy_token=self.proxy_token)
+        self.client = TestClient(TestServer(self.ui.create_app()))
+        await self.client.start_server()
+        self.addAsyncCleanup(self.client.close)
+
+    def _headers(self):
+        return {
+            "X-MusicBot-Proxy-Token": self.proxy_token,
+            "X-MusicBot-CSRF": self.ui.csrf_token,
+        }
+
+    async def test_track_delete_uses_the_index_the_public_page_showed(self) -> None:
+        listing = await (
+            await self.client.get("/api/playlists", headers=self._headers())
+        ).json()
+        mix = next(item for item in listing["playlists"] if item["name"] == "mix")
+        self.assertEqual(
+            [track["source"] for track in mix["tracks"]],
+            ["https://youtu.be/AAAAAAAAAAA", "https://youtu.be/BBBBBBBBBBB"],
+        )
+
+        response = await self.client.delete(
+            "/api/playlists/mix/0", headers=self._headers()
+        )
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(
+            self.manager.playlists["mix"].data,
+            [
+                "https://soundcloud.com/artist/hidden-from-public",
+                "https://youtu.be/BBBBBBBBBBB",
+            ],
+        )
+
+    async def test_selected_tracks_must_pass_public_validation(self) -> None:
+        response = await self.client.post(
+            "/api/playlists/mix/tracks",
+            json={"tracks": ["https://youtu.be/CCCCCCCCCCC", "evil.com/a b"]},
+            headers=self._headers(),
+        )
+
+        self.assertEqual(response.status, 400)
+        self.assertNotIn("evil.com/a b", self.manager.playlists["mix"].data)
+        self.assertNotIn(
+            "https://youtu.be/CCCCCCCCCCC", self.manager.playlists["mix"].data
+        )
+
+    async def test_playlists_are_never_deletable_publicly(self) -> None:
+        listing = await (
+            await self.client.get("/api/playlists", headers=self._headers())
+        ).json()
+        self.assertTrue(all(not item["deletable"] for item in listing["playlists"]))
+
+        response = await self.client.delete(
+            "/api/playlists/mix", headers=self._headers()
+        )
+
+        self.assertEqual(response.status, 403)
+        self.assertIn("mix", self.manager.playlists)
+
 
 class PublicWebUIAPITests(unittest.IsolatedAsyncioTestCase):
     proxy_token = "proxy-token-for-tests"
