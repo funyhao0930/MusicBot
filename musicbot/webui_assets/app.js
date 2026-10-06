@@ -9,6 +9,8 @@ const state = {
   lastSync: 0,
   connected: false,
   mutationBusy: false,
+  // bumped by every finished mutation, so a snapshot fetched before it is dropped
+  playerVersion: 0,
   scrubbing: false,
   draggingIndex: null,
   suppressQueueClick: false,
@@ -203,7 +205,12 @@ async function api(path, options = {}) {
   } catch {
     payload = { error: "伺服器回傳了無法解析的內容" };
   }
-  if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(payload.error || `HTTP ${response.status}`);
+    // the public proxy rewrites error text, so callers branch on the status instead
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
@@ -236,8 +243,19 @@ async function runMutation(work) {
   try {
     return await work();
   } finally {
+    state.playerVersion += 1;
     setMutationBusy(false);
   }
+}
+
+// mutations answer with the new queue; the snapshot keeps it so later re-renders agree
+function applyQueue(queue) {
+  if (state.player) state.player = { ...state.player, queue };
+  renderQueue(queue);
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function isPublicMode() {
@@ -517,7 +535,9 @@ function renderPlayer(player) {
 
   const toggle = $("#play-toggle");
   const paused = player?.state === "paused";
-  toggle.dataset.action = paused ? "resume" : "pause";
+  // after a stop nothing is loaded but the queue waits; play starts its first song
+  const canStartQueue = !player?.current && (player?.queue || []).length > 0;
+  toggle.dataset.action = paused ? "resume" : canStartQueue ? "play" : "pause";
   const showPlay = paused || !player?.current;
   toggle.classList.toggle("is-paused", showPlay);
   // CSS animates `d`; the attributes keep the right glyph where that is unsupported
@@ -525,7 +545,7 @@ function renderPlayer(player) {
   [".pp-l", ".pp-r"].forEach((selector, index) => toggle.querySelector?.(selector)?.setAttribute?.("d", glyphPaths[index]));
   toggle.setAttribute("aria-label", paused || !player?.current ? "播放" : "暫停");
   toggle.title = paused || !player?.current ? "播放" : "暫停";
-  toggle.disabled = state.mutationBusy || !player?.current;
+  toggle.disabled = state.mutationBusy || (!player?.current && !canStartQueue);
 
   const shuffle = $("#transport-shuffle");
   const shuffleEnabled = Boolean(player?.shuffle);
@@ -932,6 +952,7 @@ async function submitQueuePlaylistDialog(event) {
 
 async function playerAction(action, button) {
   if (!state.guildId) return;
+  if (action === "play") return playQueueItem(0);
   if (action === "previous") state.skipDirection = -1;
   else if (action === "skip") state.skipDirection = 1;
   return runMutation(async () => {
@@ -976,7 +997,9 @@ async function removeQueueItem(index, row) {
     row.classList.add("is-removing");
     try {
       const result = await api(`/api/queue/${index}?guild_id=${state.guildId}`, { method: "DELETE" });
-      setTimeout(() => renderQueue(result.queue), 180);
+      // let the row finish sliding out before the list closes the gap
+      await wait(180);
+      applyQueue(result.queue);
     } catch (error) {
       row.classList.remove("is-removing");
       toast(error.message, "error");
@@ -989,7 +1012,7 @@ async function reorderQueue(source, target) {
   return runMutation(async () => {
     try {
       const result = await api("/api/queue/reorder", { method: "POST", body: { guild_id: state.guildId, source_index: source, target_index: target } });
-      renderQueue(result.queue);
+      applyQueue(result.queue);
     } catch (error) {
       renderQueue(state.player?.queue || []);
       toast(error.message, "error");
@@ -1016,16 +1039,23 @@ async function playQueueItem(index) {
 }
 
 async function refreshSnapshot() {
+  const version = state.playerVersion;
   try {
     const status = await api("/api/status");
     state.csrf = status.csrf_token;
     setConnected(status.ready && !status.network_outage, status.network_outage ? "網路中斷" : status.ready ? `${status.latency_ms} ms` : "啟動中");
     const guildData = await api("/api/guilds");
     renderGuilds(guildData.guilds);
-    if (state.guildId) {
-      try { renderPlayer(await api(`/api/player?guild_id=${state.guildId}`)); }
-      catch (error) { if (!String(error.message).includes("No active player")) throw error; renderPlayer(null); }
-    } else renderPlayer(null);
+    const guildId = state.guildId;
+    let player = null;
+    if (guildId) {
+      // 404 means the bot has no player in this server yet, not that it is offline
+      try { player = await api(`/api/player?guild_id=${guildId}`); }
+      catch (error) { if (error.status !== 404) throw error; }
+    }
+    // a mutation or a server switch landed while this snapshot was in flight
+    if (state.mutationBusy || version !== state.playerVersion || guildId !== state.guildId) return;
+    renderPlayer(player);
   } catch (error) {
     setConnected(false, "連線中斷");
   }
@@ -1244,7 +1274,7 @@ function renderPlaylistEditor() {
             method: "POST",
             body: { guild_id: state.guildId, query: source },
           });
-          renderQueue(result.queue);
+          applyQueue(result.queue);
           toast(`已加入 ${result.added_count} 首歌曲`, "info", "arms");
         } catch (error) {
           toast(error.message, "error");
@@ -1425,11 +1455,16 @@ async function deletePlaylist() {
 }
 
 async function setPlayerVolume(volume) {
-  if (!state.guildId) return;
+  if (!state.guildId || state.mutationBusy) return;
+  const previous = state.player?.volume;
+  // the snapshot follows the released slider, so the busy re-render keeps it in place
+  if (state.player) state.player.volume = volume;
   return runMutation(async () => {
     try {
-      await api("/api/player/volume", { method: "POST", body: { guild_id: state.guildId, volume } });
+      const result = await api("/api/player/volume", { method: "POST", body: { guild_id: state.guildId, volume } });
+      if (state.player && typeof result.volume === "number") state.player.volume = result.volume;
     } catch (error) {
+      if (state.player && previous !== undefined) state.player.volume = previous;
       toast(error.message, "error");
     }
   });
@@ -1441,7 +1476,7 @@ async function addTrackToQueue(query) {
     try {
       const result = await api("/api/queue/add", { method: "POST", body: { guild_id: state.guildId, query } });
       $("#track-query").value = "";
-      renderQueue(result.queue);
+      applyQueue(result.queue);
       flashAddButton($("#add-track-form"));
       toast(`已加入 ${result.entry.title}`, "info", "arms");
     } catch (error) {
@@ -1463,8 +1498,9 @@ async function queuePlaylistTracks() {
         method: "POST",
         body: { guild_id: state.guildId },
       });
-      renderQueue(result.queue);
-      toast(`已加入 ${result.added_count} 首歌曲`, "info", "arms");
+      applyQueue(result.queue);
+      const skipped = result.skipped_count || 0;
+      toast(skipped ? `已加入 ${result.added_count} 首歌曲，略過 ${skipped} 首無法播放的歌曲` : `已加入 ${result.added_count} 首歌曲`, "info", "arms");
     } catch (error) {
       toast(error.message, "error");
     }

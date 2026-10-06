@@ -688,10 +688,14 @@ const response = (ok, payload) => ({
   const payload = JSON.parse(calls[0].options.body);
   if (payload.source_index !== 1 || payload.target_index !== 0) throw new Error("reorder indexes are wrong");
   if (context.renderedQueue.join(",") !== "Second,First") throw new Error("successful reorder did not render the response queue");
+  // later re-renders read the snapshot, so it has to carry the new order too
+  if (vm.runInContext("state.player.queue.map(item => item.title).join(',')", context) !== "Second,First") {
+    throw new Error("successful reorder left the player snapshot on the old order");
+  }
 
   responses.push(response(false, { error: "reorder failed" }));
   await vm.runInContext("reorderQueue(0, 1)", context);
-  if (context.renderedQueue.join(",") !== "First,Second") throw new Error("failed reorder did not restore the previous queue");
+  if (context.renderedQueue.join(",") !== "Second,First") throw new Error("failed reorder did not restore the previous queue");
 
   vm.runInContext("state.mutationBusy = true", context);
   await vm.runInContext("reorderQueue(0, 1)", context);
@@ -1569,6 +1573,147 @@ if (range.value !== "90") throw new Error("background progress overwrote the dra
   console.error(error);
   process.exitCode = 1;
 });
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_frontend_snapshot_and_transport_follow_the_player(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+
+function createElement() {
+  return {
+    value: "",
+    max: 100,
+    disabled: false,
+    hidden: false,
+    textContent: "",
+    dataset: {},
+    style: {},
+    listeners: {},
+    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+    setAttribute() {},
+    removeAttribute() {},
+    addEventListener(name, callback) { this.listeners[name] = callback; },
+    append() {},
+    prepend() {},
+    replaceChildren() {},
+    querySelector() { return createElement(); },
+    querySelectorAll() { return []; },
+  };
+}
+
+const elements = new Map();
+const element = selector => {
+  if (!elements.has(selector)) elements.set(selector, createElement());
+  return elements.get(selector);
+};
+const document = {
+  addEventListener() {},
+  createElement,
+  querySelector: element,
+  querySelectorAll() { return []; },
+};
+const context = {
+  document,
+  window: { confirm() { return false; }, prompt() { return null; } },
+  console,
+  fetch: async () => { throw new Error("unexpected fetch"); },
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout(callback) { callback(); },
+  URLSearchParams,
+  encodeURIComponent,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+
+const player = (overrides = {}) => ({
+  state: "playing",
+  current: { title: "Night Drive", url: "night", duration: 180, requested_by: "tester" },
+  voice_channel: { name: "radio" },
+  progress: 10,
+  volume: .25,
+  queue: [{ title: "Moonlight", url: "moon", duration: 200, requested_by: "tester" }],
+  ...overrides,
+});
+const run = code => vm.runInContext(code, context);
+
+(async () => {
+  // the public proxy rewrites "No active player" into Chinese; the 404 status is what counts
+  run(`
+    globalThis.originals = { renderPlayer, setConnected, renderGuilds };
+    globalThis.connections = [];
+    globalThis.rendered = [];
+    setConnected = connected => connections.push(connected);
+    renderPlayer = player => rendered.push(player);
+    renderGuilds = guilds => { state.guildId = guilds[0].id; };
+    api = async path => {
+      if (path === "/api/status") return { ready: true, network_outage: false, latency_ms: 3, csrf_token: "t" };
+      if (path === "/api/guilds") return { guilds: [{ id: "1", name: "server" }] };
+      const error = new Error("找不到此功能。");
+      error.status = 404;
+      throw error;
+    };
+  `);
+  await run("refreshSnapshot()");
+  if (run("connections.join(',')") !== "true") throw new Error("a server without a player was reported offline");
+  if (run("rendered.length") !== 1 || run("rendered[0]") !== null) throw new Error("a missing player did not render as idle");
+
+  // a mutation that lands while the snapshot is in flight wins over the older snapshot
+  run(`
+    rendered.length = 0;
+    api = async path => {
+      if (path === "/api/status") return { ready: true, network_outage: false, latency_ms: 3, csrf_token: "t" };
+      if (path === "/api/guilds") return { guilds: [{ id: "1", name: "server" }] };
+      state.playerVersion += 1;
+      return { state: "playing", queue: [] };
+    };
+  `);
+  await run("refreshSnapshot()");
+  if (run("rendered.length") !== 0) throw new Error("a snapshot older than the last mutation was rendered");
+
+  // after a stop the play button starts the queue from its first song
+  run(`
+    ({ renderPlayer, setConnected, renderGuilds } = originals);
+    globalThis.calls = [];
+    state.guildId = "1";
+  `);
+  run(`renderPlayer(${JSON.stringify(player({ state: "stopped", current: null }))})`);
+  const toggle = element("#play-toggle");
+  if (toggle.dataset.action !== "play" || toggle.disabled) throw new Error("a stopped queue cannot be started");
+  run(`renderPlayer(${JSON.stringify(player({ state: "stopped", current: null, queue: [] }))})`);
+  if (!toggle.disabled) throw new Error("play stayed enabled with nothing to play");
+  run(`
+    api = async (path, options) => {
+      calls.push({ path, body: options.body });
+      return { selected: { title: "Night Drive" }, player: ${JSON.stringify(player())} };
+    };
+  `);
+  await run("playerAction('play')");
+  if (run("calls.length") !== 1 || run("calls[0].path") !== "/api/queue/play" || run("calls[0].body.index") !== 0) {
+    throw new Error("play did not start the first queued song");
+  }
+
+  // the busy re-render must not snap the volume slider back to the old level
+  run(`
+    calls.length = 0;
+    renderPlayer(${JSON.stringify(player({ volume: .25 }))});
+    api = async (path, options) => { calls.push({ path, body: options.body }); return { ok: true, volume: options.body.volume }; };
+  `);
+  await run("setPlayerVolume(.8)");
+  if (element("#volume-range").value !== 80) throw new Error(`volume snapped back to ${element("#volume-range").value}`);
+  if (run("state.player.volume") !== .8) throw new Error("the player snapshot kept the old volume");
+})().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
 """
         result = subprocess.run(
             ["node", "-e", harness, str(app_js)],
