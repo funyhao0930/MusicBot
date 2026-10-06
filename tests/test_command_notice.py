@@ -44,6 +44,33 @@ class CommandUsageNoticeTests(unittest.TestCase):
             "提醒：請大家不要再使用這個舊方法，改用網頁控制。",
         )
 
+    def test_skips_notice_that_would_push_text_past_discords_limit(self) -> None:
+        long_reply = "x" * 1990
+
+        self.assertEqual(
+            _append_command_usage_notice(long_reply, DEFAULT_NOTICE), long_reply
+        )
+
+    def test_skips_notice_that_would_push_an_embed_past_discords_limits(self) -> None:
+        long_description = discord.Embed(title="佇列", description="x" * 4090)
+        crowded = discord.Embed(title="佇列", description="短")
+        for index in range(6):
+            crowded.add_field(name=f"第 {index} 首", value="y" * 1000, inline=False)
+        # trim the last field so the embed sits just under the 6000 character cap
+        overflow = len(crowded) - 5990
+        crowded.set_field_at(5, name="第 5 首", value="y" * (1000 - overflow), inline=False)
+        self.assertEqual(len(crowded), 5990)
+
+        for embed in (long_description, crowded):
+            with self.subTest(description=len(embed.description)):
+                before = embed.description
+                result = _append_command_usage_notice(embed, DEFAULT_NOTICE)
+                self.assertIs(result, embed)
+                self.assertEqual(embed.description, before)
+
+    def test_leaves_missing_content_alone(self) -> None:
+        self.assertIsNone(_append_command_usage_notice(None, DEFAULT_NOTICE))
+
 
 class CommandResponseDeliveryTests(unittest.IsolatedAsyncioTestCase):
     @classmethod
@@ -80,6 +107,45 @@ class CommandResponseDeliveryTests(unittest.IsolatedAsyncioTestCase):
             channel.sent_content,
             "已加入播放佇列\n\n請改用控制中心操作。",
         )
+
+    async def test_resending_a_vanished_edit_keeps_a_single_notice(self) -> None:
+        from musicbot.bot import MusicBot
+
+        class FakeChannel:
+            def __init__(self) -> None:
+                self.sent_content = None
+
+            async def send(self, content, *, tts=False):
+                self.sent_content = content
+                return object()
+
+        class VanishedMessage:
+            clean_content = "搜尋中"
+
+            def __init__(self, channel) -> None:
+                self.channel = channel
+
+            async def edit(self, **_kwargs):
+                response = SimpleNamespace(status=404, reason="Not Found")
+                raise discord.NotFound(response, "Unknown Message")
+
+        bot = object.__new__(MusicBot)
+        bot.config = SimpleNamespace(
+            delete_messages=False,
+            delete_invoking=False,
+            command_usage_notice="請改用控制中心操作。",
+        )
+        channel = FakeChannel()
+
+        await bot.safe_edit_message(
+            VanishedMessage(channel),
+            "找不到結果",
+            send_if_fail=True,
+            quiet=True,
+            command_response=True,
+        )
+
+        self.assertEqual(channel.sent_content, "找不到結果\n\n請改用控制中心操作。")
 
 
 class CommandUsageNoticeConfigTests(unittest.TestCase):

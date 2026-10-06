@@ -2050,9 +2050,8 @@ class MusicBot(discord.Client):
             )
             if send_if_fail:
                 lfunc("Sending message instead")
-                return await self.safe_send_message(
-                    message.channel, new, command_response=command_response
-                )
+                # `new` already carries the notice when one was requested.
+                return await self.safe_send_message(message.channel, new)
 
         except discord.HTTPException as e:
             if e.status == 429:
@@ -2081,7 +2080,6 @@ class MusicBot(discord.Client):
                         new,
                         send_if_fail=send_if_fail,
                         quiet=quiet,
-                        command_response=command_response,
                     )
             else:
                 lfunc("Failed to edit message")

@@ -19,7 +19,12 @@ from typing import (
 
 import discord
 
-from .constants import DATA_GUILD_FILE_OPTIONS
+from .constants import (
+    DATA_GUILD_FILE_OPTIONS,
+    DISCORD_EMBED_DESCRIPTION_LIMIT,
+    DISCORD_EMBED_TOTAL_CHAR_LIMIT,
+    DISCORD_MSG_CHAR_LIMIT,
+)
 from .json import Json
 from .utils import _get_variable
 
@@ -28,18 +33,30 @@ log = logging.getLogger(__name__)
 def _append_command_usage_notice(
     content: Union[str, discord.Embed], notice: str
 ) -> Union[str, discord.Embed]:
-    """Append the web-control migration notice to a command response."""
-    if not notice:
+    """
+    Append the web-control migration notice to a command response.
+    The notice is left out when it would push the response over a Discord limit,
+    since the response itself matters more than the reminder.
+    """
+    if not notice or content is None:
         return content
 
     if isinstance(content, discord.Embed):
-        if content.description:
-            content.description = f"{content.description}\n\n{notice}"
-        else:
-            content.description = notice
+        current = content.description or ""
+        description = f"{current}\n\n{notice}" if current else notice
+        total_length = len(content) - len(current) + len(description)
+        if (
+            len(description) > DISCORD_EMBED_DESCRIPTION_LIMIT
+            or total_length > DISCORD_EMBED_TOTAL_CHAR_LIMIT
+        ):
+            return content
+        content.description = description
         return content
 
-    return f"{content}\n\n{notice}"
+    combined = f"{content}\n\n{notice}"
+    if len(combined) > DISCORD_MSG_CHAR_LIMIT:
+        return content
+    return combined
 
 
 if TYPE_CHECKING:
