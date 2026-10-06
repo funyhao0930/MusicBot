@@ -1324,9 +1324,13 @@ class MusicBot(discord.Client):
             self.handle_player_inactivity(player), name="MB_HandleInactivePlayer"
         )
 
-    async def on_player_finished_playing(self, player: MusicPlayer, **_: Any) -> None:
+    async def on_player_finished_playing(
+        self, player: MusicPlayer, stopped: bool = False, **_: Any
+    ) -> None:
         """
         Event called by MusicPlayer when playback has finished without error.
+
+        :param: stopped:  Playback was stopped on purpose, so nothing new starts.
         """
         log.debug("Running on_player_finished_playing")
         if not self.loop or (self.loop and self.loop.is_closed()):
@@ -1418,7 +1422,8 @@ class MusicBot(discord.Client):
 
         # manage auto playlist playback.
         if (
-            not player.playlist.entries
+            not stopped
+            and not player.playlist.entries
             and not player.current_entry
             and self.config.auto_playlist
         ):
@@ -1557,7 +1562,12 @@ class MusicBot(discord.Client):
         else:  # Don't serialize for autoplaylist events
             await self.serialize_queue(guild)
 
-        if not player.is_dead and not player.current_entry and len(player.playlist):
+        if (
+            not stopped
+            and not player.is_dead
+            and not player.current_entry
+            and len(player.playlist)
+        ):
             player.play(_continue=True)
 
     async def on_player_entry_added(

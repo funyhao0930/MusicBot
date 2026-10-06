@@ -365,6 +365,10 @@ def create_preview_app() -> web.Application:
                 "playing" if state.player["current"] else "stopped"
             )
         elif action == "stop":
+            # like the real player, the stopped song waits at the head of the queue
+            if current:
+                queue.insert(0, current)
+            state.player["current"] = None
             state.player["state"] = "stopped"
             state.player["progress"] = 0
         elif action == "clear":
@@ -390,7 +394,13 @@ def create_preview_app() -> web.Application:
         if current:
             state.history.append(current)
         selected = queue[index]
+        skipped = queue[:index]
         del queue[: index + 1]
+        if state.player["repeat_mode"] == "all":
+            # loop-all keeps the skipped songs and the old one in rotation
+            queue.extend(skipped)
+            if current:
+                queue.append(current)
         state.player["current"] = selected
         state.player["progress"] = 0
         state.player["state"] = "playing"

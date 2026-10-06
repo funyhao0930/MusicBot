@@ -148,6 +148,45 @@ class WebUIPreviewTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(payload["player"]["progress"], 0)
 
+    async def test_preview_stop_parks_the_song_at_the_queue_head_until_play(self):
+        stopped = await (
+            await self.client.post(
+                "/api/player/action",
+                json={"guild_id": "preview", "action": "stop"},
+            )
+        ).json()
+
+        self.assertEqual(stopped["player"]["state"], "stopped")
+        self.assertIsNone(stopped["player"]["current"])
+        self.assertEqual(stopped["player"]["queue"][0]["title"], "Neon Tide")
+
+        restarted = await (
+            await self.client.post(
+                "/api/queue/play",
+                json={"guild_id": "preview", "index": 0},
+            )
+        ).json()
+        self.assertEqual(restarted["player"]["current"]["title"], "Neon Tide")
+        self.assertEqual(restarted["player"]["state"], "playing")
+
+    async def test_preview_queue_click_keeps_skipped_songs_when_repeating_all(self):
+        await self.client.post(
+            "/api/player/action",
+            json={"guild_id": "preview", "action": "repeat_all"},
+        )
+
+        payload = await (
+            await self.client.post(
+                "/api/queue/play",
+                json={"guild_id": "preview", "index": 1},
+            )
+        ).json()
+
+        self.assertEqual(
+            [entry["title"] for entry in payload["player"]["queue"]],
+            ["Starlit Signal", "Violet Afterglow", "Neon Tide"],
+        )
+
     async def test_invalid_playlist_action_does_not_create_a_playlist(self):
         before = await (await self.client.get("/api/playlists")).json()
 

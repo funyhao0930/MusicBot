@@ -48,6 +48,20 @@ class MusicPlayerQueueSelectionTests(unittest.TestCase):
             ["selected", "after"],
         )
 
+    def test_loop_all_keeps_skipped_tracks_in_rotation(self) -> None:
+        player = self._player(
+            [_Entry("first"), _Entry("selected"), _Entry("after")]
+        )
+        player.loopqueue = True
+
+        result = player.play_queue_index(1)
+
+        self.assertEqual(result.name, "selected")
+        self.assertEqual(
+            [entry.name for entry in player.playlist.entries],
+            ["selected", "after", "first"],
+        )
+
     def test_failed_transition_restores_the_queue_and_repeat_state(self) -> None:
         entries = [_Entry("first"), _Entry("second")]
         player = self._player(entries)

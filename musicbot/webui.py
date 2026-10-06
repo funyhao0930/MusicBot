@@ -470,6 +470,7 @@ class MusicBotWebUI:
             guild_id = self._guild_id_from(body.get("guild_id"))
             player = self._player_for(guild_id)
             action = str(body.get("action", "")).lower()
+            stopped_entry = None
 
             if action == "pause":
                 player.pause()
@@ -481,6 +482,7 @@ class MusicBotWebUI:
             elif action == "previous":
                 player.previous()
             elif action == "stop":
+                stopped_entry = getattr(player, "current_entry", None)
                 player.stop()
             elif action in {"repeat", "repeat_song", "repeat_all", "repeat_off"}:
                 if action != "repeat_off" and getattr(player, "current_entry", None) is None:
@@ -516,9 +518,20 @@ class MusicBotWebUI:
         except RuntimeError as exc:
             return self._error(str(exc), status=409)
 
-        return web.json_response(
-            {"ok": True, "player": self._player_payload(guild_id, player)}
-        )
+        player_payload = self._player_payload(guild_id, player)
+        if (
+            stopped_entry is not None
+            and getattr(player, "current_entry", None) is stopped_entry
+        ):
+            # Playback ends on the voice thread; show the rewound queue it leaves.
+            player_payload["current"] = None
+            player_payload["progress"] = 0
+            player_payload["queue"] = [
+                entry_to_payload(stopped_entry),
+                *player_payload["queue"],
+            ]
+
+        return web.json_response({"ok": True, "player": player_payload})
 
     async def _handle_player_volume(self, request: web.Request) -> web.Response:
         try:

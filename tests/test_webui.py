@@ -251,6 +251,8 @@ class _FakePlayer:
 
     def stop(self):
         self.calls.append("stop")
+        self.is_playing = False
+        self.is_paused = False
         self.is_stopped = True
 
     def seek(self, position):
@@ -464,6 +466,28 @@ class WebUIAPITests(unittest.IsolatedAsyncioTestCase):
             headers=self._write_headers(),
         )
         self.assertEqual(response.status, 400)
+
+    async def test_stop_shows_the_stopped_song_waiting_at_the_queue_head(self) -> None:
+        # like a real player, the playing song is not also waiting in the queue;
+        # the fake never runs the voice callback, as a stop looks right after the call
+        self.player.playlist.entries.popleft()
+
+        response = await self.client.post(
+            "/api/player/action",
+            json={"guild_id": 1, "action": "stop"},
+            headers=self._write_headers(),
+        )
+        self.assertEqual(response.status, 200)
+        player = (await response.json())["player"]
+
+        self.assertEqual(self.player.calls[-1], "stop")
+        self.assertEqual(player["state"], "stopped")
+        self.assertIsNone(player["current"])
+        self.assertEqual(player["progress"], 0)
+        self.assertEqual(
+            [entry["title"] for entry in player["queue"]],
+            ["Night Drive", "After Rain"],
+        )
 
     async def test_queue_reorder_moves_the_requested_entry(self) -> None:
         response = await self.client.post(

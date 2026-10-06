@@ -224,9 +224,11 @@ class MusicPlayer(EventEmitter, Serializable):
             raise ValueError("Queue index is outside the queue")
 
         original_entries = list(self.playlist.entries)
-        for _ in range(index):
-            self.playlist.entries.popleft()
+        skipped_entries = [self.playlist.entries.popleft() for _ in range(index)]
         selected_entry = self.playlist.entries[0]
+        if getattr(self, "loopqueue", False):
+            # loop-all keeps the skipped songs in rotation instead of dropping them
+            self.playlist.entries.extend(skipped_entries)
 
         if self._current_entry is None:
             self.play()
@@ -255,17 +257,34 @@ class MusicPlayer(EventEmitter, Serializable):
         current_entry = self._current_entry
         assert current_entry is not None
 
-        for entry in (previous_entry, current_entry):
+        # loop-all already put the finished track back at the end of the queue
+        looped_index = next(
+            (
+                index
+                for index in range(len(self.playlist.entries) - 1, -1, -1)
+                if self.playlist.entries[index] is previous_entry
+            ),
+            None,
+        )
+        if looped_index is not None:
+            del self.playlist.entries[looped_index]
+
+        requeued_entries = [previous_entry]
+        if current_entry is not previous_entry:
+            requeued_entries.append(current_entry)
+        for entry in requeued_entries:
             if hasattr(entry, "set_start_time"):
                 entry.set_start_time(0)
 
-        self.playlist.entries.appendleft(current_entry)
-        self.playlist.entries.appendleft(previous_entry)
+        for entry in reversed(requeued_entries):
+            self.playlist.entries.appendleft(entry)
         self._previous_transition = True
 
         if not self._kill_current_player():
-            self.playlist.entries.popleft()
-            self.playlist.entries.popleft()
+            for _ in requeued_entries:
+                self.playlist.entries.popleft()
+            if looped_index is not None:
+                self.playlist.entries.insert(looped_index, previous_entry)
             self._play_history.append(previous_entry)
             self._previous_transition = False
             raise RuntimeError("Playback source is not available for previous track")
@@ -398,18 +417,30 @@ class MusicPlayer(EventEmitter, Serializable):
         is_seeking = seek_position is not None
         previous_transition = getattr(self, "_previous_transition", False)
         self._previous_transition = False
-        was_stopped = getattr(self, "state", None) == MusicPlayerState.STOPPED
+        state = getattr(self, "state", None)
+        was_stopped = state == MusicPlayerState.STOPPED
+        was_killed = state == MusicPlayerState.DEAD
 
-        if is_seeking:
+        if was_killed:
+            # kill() already discarded the queue, so nothing goes back into it.
+            pass
+        elif is_seeking:
             entry.set_start_time(seek_position)
             self.playlist.entries.appendleft(entry)
         elif previous_transition:
             pass
+        elif was_stopped:
+            # A stopped track waits at the head of the queue so play starts it over.
+            if hasattr(entry, "set_start_time"):
+                entry.set_start_time(0)
+            self.playlist.entries.appendleft(entry)
         elif self.repeatsong:
             if hasattr(entry, "set_start_time"):
                 entry.set_start_time(0)
             self.playlist.entries.appendleft(entry)
         elif self.loopqueue:
+            if hasattr(entry, "set_start_time"):
+                entry.set_start_time(0)
             self.playlist.entries.append(entry)
 
         # TODO: investigate if this is cruft code or not.
@@ -420,7 +451,8 @@ class MusicPlayer(EventEmitter, Serializable):
 
         self._current_entry = None
         self._source = None
-        self.stop()
+        if not was_killed:
+            self.stop()
 
         # if an error was set, report it and return...
         if error:
@@ -440,7 +472,13 @@ class MusicPlayer(EventEmitter, Serializable):
             )
             return
 
-        if not is_seeking and not previous_transition and not self.repeatsong and not was_stopped:
+        if not (
+            is_seeking
+            or previous_transition
+            or was_stopped
+            or was_killed
+            or self.repeatsong
+        ):
             self._remember_completed_entry(entry)
 
         # ensure file cleanup is handled if nothing was wrong with playback.
@@ -450,7 +488,7 @@ class MusicPlayer(EventEmitter, Serializable):
             )
 
         # finally, tell the rest of MusicBot that playback is done.
-        self.emit("finished-playing", player=self, entry=entry)
+        self.emit("finished-playing", player=self, entry=entry, stopped=was_stopped)
 
     def _remember_completed_entry(self, entry: EntryTypes) -> None:
         """Retain a bounded session history so the previous control can replay it."""
