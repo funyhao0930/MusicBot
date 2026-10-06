@@ -1093,19 +1093,41 @@ async function loadSettings(force = false) {
   catch (error) { toast(error.message, "error"); }
 }
 
-async function loadLogs() {
-  try { const result = await api("/api/logs?limit=500"); state.logs = result.lines; renderLogs(); }
-  catch (error) { toast(error.message, "error"); }
+let logsLoading = false;
+async function loadLogs({ silent = false } = {}) {
+  if (logsLoading) return;
+  logsLoading = true;
+  try {
+    const result = await api("/api/logs?limit=500");
+    const lines = result.lines || [];
+    const changed = lines.length !== state.logs.length || lines[lines.length - 1] !== state.logs[state.logs.length - 1];
+    state.logs = lines;
+    if (changed || !silent) renderLogs();
+  } catch (error) { if (!silent) toast(error.message, "error"); }
+  finally { logsLoading = false; }
+}
+
+function pollLogs() {
+  if ($("#app-shell")?.dataset?.page !== "logs" || document.hidden) return;
+  loadLogs({ silent: true });
+}
+
+function syncLogAutoScroll() {
+  const view = $("#log-view"); const toggle = $("#log-auto-scroll");
+  if (!view || !toggle || view.hidden) return;
+  const atBottom = view.scrollHeight - view.scrollTop - view.clientHeight < 24;
+  if (toggle.checked !== atBottom) toggle.checked = atBottom;
 }
 
 function renderLogs() {
   const level = $("#log-level").value; const query = $("#log-search").value.toLowerCase();
   const lines = state.logs.filter(line => (!level || line.includes(level)) && (!query || line.toLowerCase().includes(query)));
-  const view = $("#log-view"); view.textContent = lines.join("\n");
+  const view = $("#log-view"); const previousTop = view.scrollTop;
+  view.textContent = lines.join("\n");
   view.hidden = lines.length === 0;
   const empty = $("#log-empty");
   if (empty) empty.hidden = lines.length > 0;
-  if ($("#log-auto-scroll").checked) view.scrollTop = view.scrollHeight;
+  view.scrollTop = $("#log-auto-scroll").checked ? view.scrollHeight : previousTop;
 }
 
 function playlistTrackSource(track) {
@@ -1754,11 +1776,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#restart-soft").addEventListener("click", () => requestRestart("soft"));
   $("#restart-full").addEventListener("click", () => requestRestart("full"));
   $("#permission-add-group").addEventListener("click", () => permissionGroupAction("create"));
-  $("#refresh-logs").addEventListener("click", loadLogs); $("#log-level").addEventListener("change", renderLogs); $("#log-search").addEventListener("input", renderLogs);
+  $("#refresh-logs").addEventListener("click", () => loadLogs()); $("#log-level").addEventListener("change", renderLogs); $("#log-search").addEventListener("input", renderLogs);
+  $("#log-auto-scroll").addEventListener("change", event => { if (event.target.checked) { const view = $("#log-view"); view.scrollTop = view.scrollHeight; } });
+  $("#log-view").addEventListener("scroll", syncLogAutoScroll, { passive: true });
   setupQueueDragScroll();
   setupPlayerSheet();
   document.addEventListener("keydown", handleShortcut);
   window.addEventListener?.("resize", () => requestAnimationFrame(updateTrackTitleOverflow));
   requestAnimationFrame(updateTrackTitleOverflow);
-  refreshSnapshot(); setInterval(refreshSnapshot, 2000); requestAnimationFrame(animateProgress);
+  refreshSnapshot(); setInterval(refreshSnapshot, 2000); setInterval(pollLogs, 3000); requestAnimationFrame(animateProgress);
 });
