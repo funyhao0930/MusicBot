@@ -116,5 +116,6 @@
 	"on_player_play-onChannel_authorNotInChannel_skipWhenAbsent": "Saut de la prochaine chanson dans {channel}: {title} ajouté par {author} car il n'est plus dans le channel!",
 	"on_player_play-onChannel_playingMention": "{author} - votre chanson {title} est en cours de lecture dans {channel}!",
 	"on_player_play-onChannel": "Lecture en cours dans {channel}: {title} ajouté par {author}!",
-	"on_player_play-onChannel_noAuthor_autoplaylist": "Lecture en cours d'une entrée de l'autoplaylist: {title} dans {channel}!"
+	"on_player_play-onChannel_noAuthor_autoplaylist": "Lecture en cours d'une entrée de l'autoplaylist: {title} dans {channel}!",
+	"on_player_play-onChannel_webui": "Lecture en cours dans {channel}: {title} demandé depuis l'interface Web!"
 }

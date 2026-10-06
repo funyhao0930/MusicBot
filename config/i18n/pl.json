@@ -107,5 +107,6 @@
 	"on_player_play-onChannel_authorNotInChannel_skipWhenAbsent":"Pomijanie następnego utworu {channel}: {title} dodanego przez {author}, gdyż dodającego/dodającej nie ma na kanale!",
 	"on_player_play-onChannel_playingMention":"{author} - Twój utwór {title} jest teraz odtwarzany w {channel}!",
 	"on_player_play-onChannel":"Teraz odtwarzane w {channel}: {title} dodane przez {author}!",
-	"on_player_play-onChannel_noAuthor_autoplaylist": "Teraz odtwarzane automatycznie dodaną pozycję {title} w {channel}!"
+	"on_player_play-onChannel_noAuthor_autoplaylist": "Teraz odtwarzane automatycznie dodaną pozycję {title} w {channel}!",
+	"on_player_play-onChannel_webui": "Teraz odtwarzane w {channel}: {title} zamówione z Web UI!"
 }
