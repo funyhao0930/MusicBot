@@ -25,6 +25,7 @@ media/
 artifacts/
 /webui-site/
 /tmp*.tmp*
+/.sites-sync-*.tar
 
 docker-compose.yml
 config/autoplaylist.cachemap.json

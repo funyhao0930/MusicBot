@@ -90,10 +90,22 @@ class WindowsLauncherIntegrationTests(unittest.TestCase):
 
         self.assertIn("CMD /c %SYSTEMROOT%\\py.exe -3 run.py", content)
         self.assertIn("CMD /c python run.py", content)
-        self.assertIn("CMD /c python run.py %*\nEXIT", content)
-        self.assertIn('IF "%ValueValue%"=="0x0" (', content)
+        # a normal exit closes the window, a crash stays on screen until a key press
+        self.assertIn("IF %ERRORLEVEL% NEQ 0 PAUSE\nEXIT", content)
         self.assertNotIn("CMD /k %SYSTEMROOT%\\py.exe -3 run.py", content)
         self.assertNotIn("CMD /k python run.py", content)
+
+    def test_run_bat_unhides_extensions_only_when_explorer_hides_them(self) -> None:
+        launcher = pathlib.Path(__file__).parents[1] / "run.bat"
+        content = launcher.read_text(encoding="utf-8")
+
+        # HideFileExt is 0x0 when Explorer already shows extensions.
+        self.assertIn('IF NOT "%ValueValue%"=="0x0" (', content)
+        self.assertIn(
+            "REG ADD %KEY_NAME% /v %VALUE_NAME% /t REG_DWORD /d 0 /f > NUL", content
+        )
+        # "CMD /c /k" ran "/k" as the command, so REG ADD never happened.
+        self.assertNotIn("CMD /c /k", content)
 
 
 class WebUILifecycleIntegrationTests(unittest.IsolatedAsyncioTestCase):

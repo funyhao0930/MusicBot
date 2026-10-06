@@ -6,6 +6,7 @@ import argparse
 import copy
 import random
 import ipaddress
+import os
 import threading
 import webbrowser
 from pathlib import Path
@@ -770,18 +771,24 @@ def create_preview_app() -> web.Application:
     return app
 
 
-def main(argv: list[str] | None = None) -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="啟動 MusicBot Web UI 純預覽模式"
     )
     parser.add_argument("--host", type=_preview_host, default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
+    # A string default goes through type=int only when --port is left out,
+    # so a stray non-numeric PORT never breaks an explicit --port.
+    parser.add_argument("--port", type=int, default=os.environ.get("PORT", "8765"))
     parser.add_argument(
         "--no-open",
         action="store_true",
         help="不要自動開啟瀏覽器",
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _build_parser().parse_args(argv)
 
     url = f"http://{args.host}:{args.port}/"
     if not args.no_open:

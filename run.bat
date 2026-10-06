@@ -13,22 +13,27 @@ FOR /F "usebackq tokens=1-3" %%A IN (`REG QUERY %KEY_NAME% /v %VALUE_NAME% 2^>nu
     SET ValueValue=%%C
 )
 
-IF "%ValueValue%"=="0x0" (
+REM 0x0 means Explorer already shows file extensions.
+IF NOT "%ValueValue%"=="0x0" (
     ECHO Unhiding file extensions...
-    START CMD /c /k REG ADD HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced /v HideFileExt /t REG_DWORD /d 0 /f
+    REG ADD %KEY_NAME% /v %VALUE_NAME% /t REG_DWORD /d 0 /f > NUL
 )
 ENDLOCAL
 
 
-IF EXIST %SYSTEMROOT%\py.exe (
-    CMD /c %SYSTEMROOT%\py.exe -3 run.py %*
-    EXIT
-)
+IF NOT EXIST %SYSTEMROOT%\py.exe GOTO findpython
+CMD /c %SYSTEMROOT%\py.exe -3 run.py %*
+GOTO finished
 
+:findpython
 python --version > NUL 2>&1
 IF %ERRORLEVEL% NEQ 0 GOTO nopython
 
 CMD /c python run.py %*
+
+:finished
+REM Close with MusicBot, but keep a crash on screen long enough to read it.
+IF %ERRORLEVEL% NEQ 0 PAUSE
 EXIT
 
 :nopython

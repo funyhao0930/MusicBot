@@ -215,6 +215,21 @@ class WebUIPreviewTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(argparse.ArgumentTypeError):
             _preview_host("0.0.0.0")
 
+    def test_port_environment_variable_only_fills_in_a_missing_port(self):
+        from musicbot.webui_preview import _build_parser
+
+        with patch.dict("os.environ", {"PORT": "9100"}):
+            self.assertEqual(_build_parser().parse_args([]).port, 9100)
+
+        with patch.dict("os.environ", {"PORT": "not-a-port"}):
+            # an explicit --port wins without ever parsing the stray value
+            self.assertEqual(_build_parser().parse_args(["--port", "8877"]).port, 8877)
+            with self.assertRaises(SystemExit), patch("sys.stderr"):
+                _build_parser().parse_args([])
+
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(_build_parser().parse_args([]).port, 8765)
+
 
 if __name__ == "__main__":
     unittest.main()
