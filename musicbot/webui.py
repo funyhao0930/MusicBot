@@ -11,11 +11,13 @@ import re
 import secrets
 import time
 import webbrowser
+from collections.abc import MutableMapping
 from typing import Any, Dict
 from urllib.parse import urlsplit
 
 from aiohttp import web
 
+from .constants import WEBUI_REQUEST_INFO_KEY
 from .webui_i18n import localize_option, localize_permission_group
 
 
@@ -53,6 +55,7 @@ _ASSET_CONTENT_TYPES = {
     "meme-idle.webp": "image/webp",
 }
 _PROTECTED_PERMISSION_GROUPS = {"owner", "default"}
+WEBUI_REQUESTER_NAME = "網頁使用者"
 
 
 def public_api_routes(controller: Any) -> list[Any]:
@@ -204,6 +207,8 @@ def entry_to_payload(entry: Any) -> Dict[str, Any]:
             author, "name", "Unknown"
         )
         requested_by_id = getattr(author, "id", None)
+    elif bool(getattr(entry, "from_web_ui", False)):
+        requested_by = WEBUI_REQUESTER_NAME
 
     duration = getattr(entry, "duration", None)
     return {
@@ -214,6 +219,16 @@ def entry_to_payload(entry: Any) -> Dict[str, Any]:
         "requested_by": requested_by,
         "requested_by_id": requested_by_id,
     }
+
+
+def mark_web_request(info: Any) -> None:
+    """Tag extracted media, and its playlist entries, as a Web UI listener request."""
+    if not isinstance(info, MutableMapping):
+        return
+    info[WEBUI_REQUEST_INFO_KEY] = True
+    get_entries = getattr(info, "get_entries_dicts", None)
+    for entry_info in get_entries() if callable(get_entries) else []:
+        entry_info[WEBUI_REQUEST_INFO_KEY] = True
 
 
 def redact_log_line(line: str) -> str:
@@ -586,6 +601,7 @@ class MusicBotWebUI:
             )
             if not info:
                 raise ValueError("No playable result was found")
+            mark_web_request(info)
             if bool(getattr(info, "has_entries", False)):
                 entries, _position = await player.playlist.import_from_info(
                     info, channel=None, author=None, head=False

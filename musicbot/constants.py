@@ -143,6 +143,9 @@ DISCORD_MSG_CHAR_LIMIT: int = 2000
 DISCORD_EMBED_DESCRIPTION_LIMIT: int = 4096
 DISCORD_EMBED_TOTAL_CHAR_LIMIT: int = 6000
 
+# Extraction data key that marks media a listener requested through the Web UI.
+WEBUI_REQUEST_INFO_KEY: str = "__webui_request"
+
 
 EMOJI_CHECK_MARK_BUTTON: str = "\u2705"
 EMOJI_CROSS_MARK_BUTTON: str = "\u274E"

@@ -1192,6 +1192,12 @@ class MusicBot(discord.Client):
                     author=entry.author.name,
                 )
 
+        elif entry.from_web_ui:
+            newmsg = self.str.get(
+                "on_player_play-onChannel_webui",
+                "Now playing in {channel}: {title} requested from the Web UI!",
+            ).format(title=entry.title, channel=player.voice_client.channel.name)
+
         else:
             # no author (and channel), it's an auto playlist entry.
             newmsg = self.str.get(
@@ -1595,7 +1601,8 @@ class MusicBot(discord.Client):
             player.skip()
 
         # Only serialize the queue for user-added tracks, unless deferred
-        if entry.author and entry.channel and not defer_serialize:
+        user_added = bool(entry.author and entry.channel) or entry.from_web_ui
+        if user_added and not defer_serialize:
             await self.serialize_queue(player.voice_client.channel.guild)
 
     async def on_player_error(
@@ -4927,6 +4934,8 @@ class MusicBot(discord.Client):
                 # TODO: i18n
                 if entry.from_auto_playlist:
                     np_text += "\n`via autoplaylist`"
+                elif entry.from_web_ui:
+                    np_text += "\n`via Web UI`"
 
             if self.config.embeds:
                 content = self._gen_embed()
@@ -4942,6 +4951,8 @@ class MusicBot(discord.Client):
                     content.add_field(
                         name="Added By:", value="`auto playlist`", inline=False
                     )
+                elif entry.from_web_ui:
+                    content.add_field(name="Added By:", value="`Web UI`", inline=False)
                 content.add_field(
                     name="Progress",
                     value=f"{prog_str}\n{prog_bar_str}\n\n",

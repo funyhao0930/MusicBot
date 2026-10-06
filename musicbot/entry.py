@@ -12,6 +12,7 @@ from yt_dlp.utils import (  # type: ignore[import-untyped]
     YoutubeDLError,
 )
 
+from .constants import WEBUI_REQUEST_INFO_KEY
 from .constructs import Serializable
 from .downloader import YtdlpResponseDict
 from .exceptions import ExtractionError, InvalidDataError, MusicbotException
@@ -255,10 +256,15 @@ class URLPlaylistEntry(BasePlaylistEntry):
 
     @property
     def from_auto_playlist(self) -> bool:
-        """Returns true if the entry has an author or a channel."""
+        """Returns true if the auto playlist added this entry."""
         if self.author is not None or self.channel is not None:
             return False
-        return True
+        return not self.from_web_ui
+
+    @property
+    def from_web_ui(self) -> bool:
+        """Returns true if a listener requested this entry through the Web UI."""
+        return bool(self.info.get(WEBUI_REQUEST_INFO_KEY, False))
 
     @property
     def url(self) -> str:
@@ -755,10 +761,15 @@ class StreamPlaylistEntry(BasePlaylistEntry):
 
     @property
     def from_auto_playlist(self) -> bool:
-        """Returns true if the entry has an author or a channel."""
+        """Returns true if the auto playlist added this entry."""
         if self.author is not None or self.channel is not None:
             return False
-        return True
+        return not self.from_web_ui
+
+    @property
+    def from_web_ui(self) -> bool:
+        """Returns true if a listener requested this entry through the Web UI."""
+        return bool(self.info.get(WEBUI_REQUEST_INFO_KEY, False))
 
     @property
     def url(self) -> str:
@@ -972,10 +983,15 @@ class LocalFilePlaylistEntry(BasePlaylistEntry):
 
     @property
     def from_auto_playlist(self) -> bool:
-        """Returns true if the entry has an author or a channel."""
+        """Returns true if the auto playlist added this entry."""
         if self.author is not None or self.channel is not None:
             return False
-        return True
+        return not self.from_web_ui
+
+    @property
+    def from_web_ui(self) -> bool:
+        """Returns true if a listener requested this entry through the Web UI."""
+        return bool(self.info.get(WEBUI_REQUEST_INFO_KEY, False))
 
     @property
     def url(self) -> str:

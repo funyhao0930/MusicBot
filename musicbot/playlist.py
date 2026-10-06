@@ -41,6 +41,9 @@ GuildMessageableChannels = Union[
 
 log = logging.getLogger(__name__)
 
+# Stands in for the anonymous listeners who queue songs from the Web UI.
+_WEBUI_ROUND_ROBIN_REQUESTER = object()
+
 
 class Playlist(EventEmitter, Serializable):
     """
@@ -351,14 +354,24 @@ class Playlist(EventEmitter, Serializable):
             entry_list.reverse()
         return entry_list, position
 
-    def get_next_song_from_author(
-        self, author: "discord.abc.User"
-    ) -> Optional[EntryTypes]:
+    @staticmethod
+    def _round_robin_requester(entry: EntryTypes) -> Any:
+        """
+        Get who takes a round-robin turn for `entry`, or None for the auto playlist.
+        Web UI requests share one turn since their listeners are anonymous.
+        """
+        if entry.author:
+            return entry.author
+        if entry.from_web_ui:
+            return _WEBUI_ROUND_ROBIN_REQUESTER
+        return None
+
+    def get_next_song_from_author(self, author: Any) -> Optional[EntryTypes]:
         """
         Get the next song in the queue that was added by the given `author`
         """
         for entry in self.entries:
-            if entry.author == author:
+            if self._round_robin_requester(entry) == author:
                 return entry
 
         return None
@@ -369,12 +382,13 @@ class Playlist(EventEmitter, Serializable):
         Entries added by the auto playlist will be removed.
         """
         new_queue: Deque[EntryTypes] = deque()
-        all_authors: List["discord.abc.User"] = []
+        all_authors: List[Any] = []
 
         # Make a list of unique authors from the current queue.
         for entry in self.entries:
-            if entry.author and entry.author not in all_authors:
-                all_authors.append(entry.author)
+            requester = self._round_robin_requester(entry)
+            if requester is not None and requester not in all_authors:
+                all_authors.append(requester)
 
         # If all queue entries have no author, do nothing.
         if len(all_authors) == 0:

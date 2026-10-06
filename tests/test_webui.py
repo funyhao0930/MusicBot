@@ -155,6 +155,51 @@ class WebUIDataTests(unittest.TestCase):
         self.assertEqual(payload["requested_by"], "西呱呱")
         self.assertNotIn("filename", payload)
 
+    def test_entry_payload_names_web_ui_requests_apart_from_the_auto_playlist(self) -> None:
+        from musicbot.webui import entry_to_payload
+
+        def entry(from_web_ui: bool) -> SimpleNamespace:
+            return SimpleNamespace(
+                title="Night Drive",
+                url="https://example.test/track",
+                thumbnail_url="",
+                duration=183,
+                author=None,
+                from_web_ui=from_web_ui,
+            )
+
+        self.assertEqual(entry_to_payload(entry(True))["requested_by"], "網頁使用者")
+        self.assertEqual(entry_to_payload(entry(False))["requested_by"], "Auto playlist")
+
+    def test_web_requests_are_marked_on_the_info_and_every_playlist_entry(self) -> None:
+        from musicbot.constants import WEBUI_REQUEST_INFO_KEY
+        from musicbot.downloader import YtdlpResponseDict
+        from musicbot.webui import mark_web_request
+
+        info = YtdlpResponseDict(
+            {
+                "__input_subject": "https://example.test/list",
+                "_type": "playlist",
+                "entries": [{"url": "https://example.test/1"}, {"url": "https://example.test/2"}],
+            }
+        )
+
+        mark_web_request(info)
+
+        self.assertTrue(info[WEBUI_REQUEST_INFO_KEY])
+        self.assertTrue(
+            all(entry[WEBUI_REQUEST_INFO_KEY] for entry in info.get_entries_dicts())
+        )
+        # extracted media is what playlist entries are built from
+        self.assertTrue(
+            all(
+                item.get(WEBUI_REQUEST_INFO_KEY)
+                for item in info.get_entries_objects()
+            )
+        )
+        # non-mapping fakes are left alone
+        mark_web_request(SimpleNamespace(title="fake"))
+
 
 class _FakePlaylist:
     def __init__(self, entries):
