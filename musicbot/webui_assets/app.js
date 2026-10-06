@@ -170,10 +170,29 @@ function toast(message, type = "info", meme = type === "error" ? "gugugaga" : ""
   bar.className = "toast-bar";
   node.append(bar);
   $("#toast-region").append(node);
-  setTimeout(() => {
-    node.classList.add("is-leaving");
-    node.addEventListener("animationend", () => node.remove(), { once: true });
-  }, 2800);
+  setTimeout(() => dismissToast(node), 2800);
+}
+
+function dismissToast(node) {
+  if (!node || node.isLeaving) return;
+  node.isLeaving = true;
+  node.classList.add("is-leaving");
+  node.addEventListener("animationend", () => node.remove(), { once: true });
+}
+
+// stays up until the returned dismiss runs, for requests that may take a while
+function pendingToast(message) {
+  const node = document.createElement("div");
+  node.className = "toast is-pending";
+  node.setAttribute?.("role", "status");
+  const spinner = document.createElement("span");
+  spinner.className = "toast-spinner";
+  spinner.setAttribute?.("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.textContent = message;
+  node.append(spinner, text);
+  $("#toast-region").append(node);
+  return () => dismissToast(node);
 }
 
 function syncLoudMeme(volume) {
@@ -1269,14 +1288,17 @@ function renderPlaylistEditor() {
         return;
       }
       await runMutation(async () => {
+        const dismiss = pendingToast("正在加入歌曲…");
         try {
           const result = await api("/api/queue/add", {
             method: "POST",
             body: { guild_id: state.guildId, query: source },
           });
           applyQueue(result.queue);
+          dismiss();
           toast(`已加入 ${result.added_count} 首歌曲`, "info", "arms");
         } catch (error) {
+          dismiss();
           toast(error.message, "error");
         }
       });
@@ -1493,15 +1515,18 @@ async function queuePlaylistTracks() {
   }
   if (!playlist || playlist.tracks.length === 0) return;
   return runMutation(async () => {
+    const dismiss = pendingToast(`正在加入 ${playlist.tracks.length} 首歌曲…`);
     try {
       const result = await api(`/api/playlists/${encodeURIComponent(playlist.name)}/queue`, {
         method: "POST",
         body: { guild_id: state.guildId },
       });
       applyQueue(result.queue);
+      dismiss();
       const skipped = result.skipped_count || 0;
       toast(skipped ? `已加入 ${result.added_count} 首歌曲，略過 ${skipped} 首無法播放的歌曲` : `已加入 ${result.added_count} 首歌曲`, "info", "arms");
     } catch (error) {
+      dismiss();
       toast(error.message, "error");
     }
   });
