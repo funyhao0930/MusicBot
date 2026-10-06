@@ -299,7 +299,7 @@ class MusicBot(discord.Client):
                 time.sleep(5)  # make sure they see the problem
         else:
             try:
-                log.warning(
+                log.info(
                     "The config did not have Spotify app credentials, attempting to use guest mode."
                 )
                 self.spotify = Spotify(
@@ -315,7 +315,10 @@ class MusicBot(discord.Client):
                     self.config.spotify_enabled = True
             except exceptions.SpotifyError as e:
                 log.warning(
-                    "Could not start Spotify client using guest mode. Details: %s.", e
+                    "Could not start Spotify client using guest mode, Spotify links are disabled. "
+                    "Set Spotify_ClientID and Spotify_ClientSecret in options.ini to enable them. "
+                    "Details: %s",
+                    e,
                 )
                 self.config.spotify_enabled = False
 

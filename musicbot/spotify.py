@@ -721,5 +721,5 @@ class Spotify:
             if log.getEffectiveLevel() <= logging.DEBUG:
                 log.exception("Failed to get Spotify Guest Token.")
             else:
-                log.error("Failed to get Guest Token due to: %s", str(e))
+                log.warning("Failed to get Guest Token due to: %s", str(e))
             return {}

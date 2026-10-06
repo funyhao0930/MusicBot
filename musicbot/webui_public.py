@@ -177,16 +177,37 @@ class MusicBotPublicWebUI(MusicBotWebUI):
         try:
             response = await handler(request)
         except web.HTTPException as exc:
-            log.warning("Public Web UI returned HTTP %s", exc.status)
+            log.warning(
+                "Public Web UI returned HTTP %s for %s %s",
+                exc.status,
+                request.method,
+                request.path,
+            )
             return self._safe_error(exc.status)
         except Exception as exc:
             log.error(
-                "Public Web UI request failed (%s)", type(exc).__name__
+                "Public Web UI request failed (%s) for %s %s",
+                type(exc).__name__,
+                request.method,
+                request.path,
             )
             return self._safe_server_error()
 
         if response.status >= 400:
-            log.warning("Public Web UI handler returned HTTP %s", response.status)
+            # GET 404 is the normal "bot has no player in this guild yet" state
+            # that the site polls every few seconds; it is not worth a warning.
+            level = (
+                logging.DEBUG
+                if request.method == "GET" and response.status == 404
+                else logging.WARNING
+            )
+            log.log(
+                level,
+                "Public Web UI handler returned HTTP %s for %s %s",
+                response.status,
+                request.method,
+                request.path,
+            )
             return self._safe_error(response.status)
         return response
 
