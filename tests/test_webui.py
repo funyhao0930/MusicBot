@@ -200,6 +200,52 @@ class WebUIDataTests(unittest.TestCase):
         # non-mapping fakes are left alone
         mark_web_request(SimpleNamespace(title="fake"))
 
+    def test_web_requests_carry_the_discord_requester_into_the_payload(self) -> None:
+        from musicbot.constants import WEBUI_REQUESTER_INFO_KEY
+        from musicbot.downloader import YtdlpResponseDict
+        from musicbot.webui import entry_to_payload, mark_web_request
+
+        info = YtdlpResponseDict(
+            {
+                "__input_subject": "https://example.test/list",
+                "_type": "playlist",
+                "entries": [{"url": "https://example.test/1"}],
+            }
+        )
+        mark_web_request(info, {"id": 42, "name": "西呱呱"})
+        self.assertEqual(info.get_entries_dicts()[0][WEBUI_REQUESTER_INFO_KEY]["name"], "西呱呱")
+
+        entry = SimpleNamespace(
+            title="Night Drive", url="", thumbnail_url="", duration=1, author=None,
+            from_web_ui=True, info=info,
+        )
+        payload = entry_to_payload(entry)
+        self.assertEqual(payload["requested_by"], "西呱呱")
+        self.assertEqual(payload["requested_by_id"], 42)
+
+    def test_local_web_requester_is_the_owner_and_public_visitors_stay_anonymous(self) -> None:
+        from musicbot.webui import MusicBotWebUI
+        from musicbot.webui_public import MusicBotPublicWebUI
+
+        owner = SimpleNamespace(id=42, display_name="西呱呱", name="xiguagua")
+        guild = SimpleNamespace(get_member=lambda user_id: owner if user_id == 42 else None)
+        bot = SimpleNamespace(
+            config=SimpleNamespace(owner_id=42),
+            get_guild=lambda guild_id: guild if guild_id == 1 else None,
+            get_user=lambda user_id: SimpleNamespace(display_name="global name"),
+        )
+
+        local = MusicBotWebUI(bot, host="127.0.0.1", port=8765)
+        self.assertEqual(local._web_requester(1), {"id": 42, "name": "西呱呱"})
+        # outside the server the owner's global profile name still beats an anonymous label
+        self.assertEqual(local._web_requester(2)["name"], "global name")
+        bot.config.owner_id = 0
+        self.assertIsNone(local._web_requester(1))
+
+        bot.config.owner_id = 42
+        public = MusicBotPublicWebUI(bot, port=8766, proxy_token="token")
+        self.assertIsNone(public._web_requester(1))
+
 
 class _FakePlaylist:
     def __init__(self, entries):

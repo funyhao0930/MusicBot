@@ -44,8 +44,7 @@ const PLAY_PAUSE_PATHS = {
 };
 const ADD_DONE_ICON = '<svg class="done-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const QUEUE_ACTION_ICONS = {
-  up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>',
-  down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+  grip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14"/><path d="M5 12h14"/><path d="M5 16h14"/></svg>',
   queue: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>',
   remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
 };
@@ -56,6 +55,8 @@ const LETTERBOXED_THUMBNAIL = /\/(?:hq|sd)?default\.(?:jpg|webp)/;
 const QUEUE_SCROLL_EDGE = 64;
 let queueDragPoint = null;
 let queueDragFrame = null;
+// the pointer that lifted a queue row by its handle: { pointerId, row, grabOffset, dy }
+let queueDrag = null;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -496,8 +497,6 @@ function renderBarTrack(player) {
     title.textContent = current?.title || "尚未播放歌曲";
     title.title = current?.title || "";
   }
-  const meta = $("#bar-meta");
-  if (meta) meta.textContent = current ? `由 ${current.requested_by} 加入` : "";
   if (typeof document.title === "string") {
     state.baseTitle = state.baseTitle || document.title;
     document.title = current && player.state === "playing" ? `${current.title} · ${state.baseTitle}` : state.baseTitle;
@@ -515,8 +514,6 @@ function renderQueueNow(player) {
     title.textContent = current?.title || "";
     title.title = current?.title || "";
   }
-  const meta = $("#queue-now-meta");
-  if (meta) meta.textContent = current ? `由 ${current.requested_by} 加入` : "";
 }
 
 function renderPlayer(player) {
@@ -533,7 +530,7 @@ function renderPlayer(player) {
   $("#app-shell")?.classList?.toggle?.("is-playing", playing);
   $("#app-shell")?.classList?.toggle?.("has-track", Boolean(player?.current));
   setTrackTitle(player?.current?.title);
-  $("#track-meta").textContent = player?.current ? `由 ${player.current.requested_by} 加入 · ${player.voice_channel?.name || "未連接語音頻道"}` : "加入一首歌，讓今晚有點聲音。";
+  $("#track-meta").textContent = player?.current ? (player.voice_channel?.name || "未連接語音頻道") : "加入一首歌，讓今晚有點聲音。";
   renderNowPlayingState(player);
   renderBarTrack(player);
   renderQueueNow(player);
@@ -684,13 +681,14 @@ function renderQueue(queue) {
     entry.url || "",
     entry.title || "",
     Number(entry.duration) || 0,
-    entry.requested_by || "",
   ]));
   if (renderKey === state.queueRenderKey) {
     syncQueueRowControls(queue);
     syncQueueSelectionControls(queue);
     return;
   }
+  // a rebuild would pull the lifted row out from under the pointer; the drop renders it
+  if (state.draggingIndex !== null) return;
   state.selectedQueueIndexes.clear();
   state.queueRenderKey = renderKey;
 
@@ -699,18 +697,18 @@ function renderQueue(queue) {
   const rows = queue.map((entry, index) => {
     const row = document.createElement("div");
     row.className = "queue-item";
-    row.draggable = !state.mutationBusy;
     row.dataset.index = index;
     const baseKey = `${entry.url || ""}\u0000${entry.title || ""}`;
     keyCounts[baseKey] = (keyCounts[baseKey] || 0) + 1;
     row.dataset.key = `${baseKey}\u0000${keyCounts[baseKey]}`;
     row.style?.setProperty?.("--i", String(index));
     const disabled = state.mutationBusy ? " disabled" : "";
-    row.innerHTML = `<span class="queue-lead"><span class="queue-index">${index + 1}</span><input class="queue-select-input" type="checkbox"${disabled}></span><span class="queue-thumb">${NOTE_ICON}${THUMB_PLAY_ICON}</span><button class="queue-copy queue-play-target" type="button"${disabled}><strong></strong><small><span class="queue-meta-time"></span><span class="queue-requester"></span></small></button><span class="queue-row-end"><span class="queue-duration"></span><span class="queue-row-actions"><button class="queue-move-up icon-button" type="button" aria-label="向上移動" title="向上移動"${state.mutationBusy || index === 0 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.up}</button><button class="queue-move-down icon-button" type="button" aria-label="向下移動" title="向下移動"${state.mutationBusy || index === queue.length - 1 ? " disabled" : ""}>${QUEUE_ACTION_ICONS.down}</button><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button></span></span>`;
+    row.innerHTML = `<label class="queue-lead"><span class="queue-index">${index + 1}</span><input class="queue-select-input" type="checkbox"${disabled}></label><span class="queue-thumb">${NOTE_ICON}${THUMB_PLAY_ICON}</span><button class="queue-copy queue-play-target" type="button"${disabled}><strong></strong><small class="queue-meta-time"></small></button><span class="queue-row-end"><span class="queue-duration"></span><span class="queue-row-actions"><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button><button class="queue-handle icon-button" type="button" title="按住拖曳排序"${disabled}>${QUEUE_ACTION_ICONS.grip}</button></span></span>`;
     const checkbox = $(".queue-select-input", row);
     // titles come from the media source, so they are set as text or attributes, never as markup
     checkbox.setAttribute?.("aria-label", `選取第 ${index + 1} 首歌曲`);
     $(".queue-play-target", row).setAttribute?.("aria-label", `播放第 ${index + 1} 首：${entry.title}`);
+    $(".queue-handle", row).setAttribute?.("aria-label", `排序第 ${index + 1} 首：按住拖曳，或用上下方向鍵移動`);
     checkbox.checked = state.selectedQueueIndexes.has(index);
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.selectedQueueIndexes.add(index);
@@ -731,12 +729,12 @@ function renderQueue(queue) {
     const title = $("strong", row);
     title.textContent = entry.title;
     title.title = entry.title;
-    $(".queue-requester", row).textContent = `由 ${entry.requested_by} 加入`;
-    $(".queue-meta-time", row).textContent = `${formatTime(entry.duration)} · `;
+    $(".queue-meta-time", row).textContent = formatTime(entry.duration);
     $(".queue-duration", row).textContent = formatTime(entry.duration);
     $(".queue-play-target", row).addEventListener("click", () => playQueueItem(index));
-    $(".queue-move-up", row).addEventListener("click", () => reorderQueue(index, index - 1));
-    $(".queue-move-down", row).addEventListener("click", () => reorderQueue(index, index + 1));
+    const handle = $(".queue-handle", row);
+    handle.addEventListener("pointerdown", event => startQueueDrag(event, row, index));
+    handle.addEventListener("keydown", event => nudgeQueueItem(event, index, queue.length));
     $(".queue-remove", row).addEventListener("click", () => removeQueueItem(index, row));
     const isInteractiveTarget = target => Boolean(target?.closest?.("button, input, label, a, select"));
     const playFromRow = event => {
@@ -744,25 +742,6 @@ function renderQueue(queue) {
       playQueueItem(index);
     };
     row.addEventListener("click", playFromRow);
-    row.addEventListener("dragstart", event => {
-      if (state.mutationBusy) { event.preventDefault(); return; }
-      state.draggingIndex = index;
-      state.suppressQueueClick = true;
-      document.body.classList.add("is-queue-dragging");
-      event.dataTransfer?.setData("text/plain", String(index));
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-      row.classList.add("is-dragging");
-    });
-    row.addEventListener("dragend", () => {
-      state.draggingIndex = null;
-      queueDragPoint = null;
-      if (queueDragFrame !== null) cancelAnimationFrame(queueDragFrame);
-      queueDragFrame = null;
-      document.body.classList.remove("is-queue-dragging");
-      row.classList.remove("is-dragging");
-      clearQueueDropIndicators();
-      setTimeout(() => { state.suppressQueueClick = false; }, 0);
-    });
     return row;
   });
   list.replaceChildren(...rows);
@@ -774,14 +753,11 @@ function renderQueue(queue) {
 function syncQueueRowControls(queue) {
   const queueList = $("#queue-list");
   if (!queueList?.querySelectorAll) return;
-  $$(".queue-item", queueList).forEach((row, index) => {
-    row.draggable = !state.mutationBusy;
+  $$(".queue-item", queueList).forEach(row => {
     const checkbox = $(".queue-select-input", row);
     if (checkbox) checkbox.disabled = state.mutationBusy;
-    const moveUp = $(".queue-move-up", row);
-    if (moveUp) moveUp.disabled = state.mutationBusy || index === 0;
-    const moveDown = $(".queue-move-down", row);
-    if (moveDown) moveDown.disabled = state.mutationBusy || index === queue.length - 1;
+    const handle = $(".queue-handle", row);
+    if (handle) handle.disabled = state.mutationBusy;
     const remove = $(".queue-remove", row);
     if (remove) remove.disabled = state.mutationBusy;
     const playTarget = $(".queue-play-target", row);
@@ -793,26 +769,52 @@ function clearQueueDropIndicators() {
   const queueList = $("#queue-list");
   if (!queueList?.querySelectorAll) return;
   $$(".queue-item", queueList).forEach(row => row.classList.remove("is-drop-before", "is-drop-after"));
+  queueDropLine(queueList, false)?.classList?.remove?.("is-visible");
+}
+
+// one pink line for the whole list, drawn above the lifted row so it never hides beneath it
+function queueDropLine(list, create = true) {
+  let line = typeof list.querySelector === "function" ? list.querySelector(".queue-drop-line") : null;
+  if (!line && create && typeof document.createElement === "function") {
+    line = document.createElement("div");
+    line.className = "queue-drop-line";
+    line.setAttribute?.("aria-hidden", "true");
+    list.append(line);
+  }
+  return line;
 }
 
 function queueDropSlot(list, clientY) {
   const rows = $$(".queue-item", list);
   const slot = rows.findIndex(row => {
     const rect = row.getBoundingClientRect();
-    return clientY < rect.top + rect.height / 2;
+    // the lifted row rides the pointer, so it is measured where it sits in the list
+    const top = row === queueDrag?.row ? rect.top - queueDrag.dy : rect.top;
+    return clientY < top + rect.height / 2;
   });
   return slot < 0 ? rows.length : slot;
 }
 
 function showQueueDropIndicator(list, clientX, clientY) {
-  clearQueueDropIndicators();
   const rect = list.getBoundingClientRect();
-  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
   const rows = $$(".queue-item", list);
-  if (!rows.length) return;
+  if (!rows.length || clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+    clearQueueDropIndicators();
+    return;
+  }
+  // redrawn every frame: only the marked row changes, the line keeps its fade and glides
+  rows.forEach(row => row.classList.remove("is-drop-before", "is-drop-after"));
   const slot = queueDropSlot(list, clientY);
+  const after = slot === rows.length;
   const row = rows[Math.min(slot, rows.length - 1)];
-  row.classList.add(slot === rows.length ? "is-drop-after" : "is-drop-before");
+  row.classList.add(after ? "is-drop-after" : "is-drop-before");
+  const line = queueDropLine(list);
+  if (!line?.style) return;
+  // measured where the row sits in the list, even when it is the one riding the pointer
+  const rowRect = row.getBoundingClientRect();
+  const top = rowRect.top - (row === queueDrag?.row ? queueDrag.dy : 0) - rect.top + list.scrollTop;
+  line.style.transform = `translateY(${after ? top + rowRect.height + 1 : top - 1}px)`;
+  line.classList.add("is-visible");
 }
 
 function queueEdgeSpeed(position, start, end) {
@@ -839,49 +841,107 @@ function scrollQueueDragTarget(list, clientX, clientY, amount = null) {
   return page.scrollTop !== before;
 }
 
+function isInQueueList(list, point) {
+  const rect = list.getBoundingClientRect();
+  return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
+}
+
+// the lifted row follows the pointer, whatever scrolled underneath it since the grab
+function followQueueDragPointer() {
+  if (!queueDrag || !queueDragPoint) return;
+  const top = queueDrag.row.getBoundingClientRect().top - queueDrag.dy;
+  queueDrag.dy = queueDragPoint.y - queueDrag.grabOffset - top;
+  queueDrag.row.style?.setProperty?.("--drag-y", `${queueDrag.dy}px`);
+}
+
 function animateQueueDragScroll() {
   queueDragFrame = null;
   if (state.draggingIndex === null || !queueDragPoint) return;
   const list = $("#queue-list");
-  if (scrollQueueDragTarget(list, queueDragPoint.x, queueDragPoint.y)) {
-    showQueueDropIndicator(list, queueDragPoint.x, queueDragPoint.y);
-  }
+  scrollQueueDragTarget(list, queueDragPoint.x, queueDragPoint.y);
+  followQueueDragPointer();
+  showQueueDropIndicator(list, queueDragPoint.x, queueDragPoint.y);
   queueDragFrame = requestAnimationFrame(animateQueueDragScroll);
+}
+
+function startQueueDrag(event, row, index) {
+  if (state.mutationBusy || state.draggingIndex !== null || event.button > 0) return;
+  // no text selection, no touch panning: this pointer now carries the row
+  event.preventDefault();
+  event.currentTarget?.setPointerCapture?.(event.pointerId);
+  queueDrag = { pointerId: event.pointerId, row, grabOffset: event.clientY - row.getBoundingClientRect().top, dy: 0 };
+  queueDragPoint = { x: event.clientX, y: event.clientY };
+  state.draggingIndex = index;
+  state.suppressQueueClick = true;
+  document.body.classList.add("is-queue-dragging");
+  row.classList.add("is-settled", "is-dragging");
+  if (queueDragFrame === null) queueDragFrame = requestAnimationFrame(animateQueueDragScroll);
+}
+
+function moveQueueDrag(event) {
+  if (!queueDrag || event.pointerId !== queueDrag.pointerId) return;
+  queueDragPoint = { x: event.clientX, y: event.clientY };
+  followQueueDragPointer();
+  showQueueDropIndicator($("#queue-list"), event.clientX, event.clientY);
+}
+
+function settleQueueRow(row) {
+  row.classList.remove("is-dragging");
+  row.style?.removeProperty?.("--drag-y");
+}
+
+function finishQueueDrag(event, commit) {
+  if (!queueDrag || (event && event.pointerId !== queueDrag.pointerId)) return;
+  const { row } = queueDrag;
+  const list = $("#queue-list");
+  const source = state.draggingIndex;
+  let target = source;
+  const count = $$(".queue-item", list).length;
+  if (commit && queueDragPoint && count && isInQueueList(list, queueDragPoint)) {
+    const slot = queueDropSlot(list, queueDragPoint.y);
+    target = Math.max(0, Math.min(count - 1, slot - (source < slot ? 1 : 0)));
+  }
+  queueDrag = null;
+  queueDragPoint = null;
+  state.draggingIndex = null;
+  if (queueDragFrame !== null) cancelAnimationFrame(queueDragFrame);
+  queueDragFrame = null;
+  document.body.classList.remove("is-queue-dragging");
+  clearQueueDropIndicators();
+  setTimeout(() => { state.suppressQueueClick = false; }, 0);
+  if (target === source || state.mutationBusy) {
+    settleQueueRow(row);
+    renderQueue(state.player?.queue || []);
+    return;
+  }
+  // the row stays where it was dropped, so the rebuilt list glides from there
+  void Promise.resolve(reorderQueue(source, target)).finally(() => settleQueueRow(row));
+}
+
+function nudgeQueueItem(event, index, count) {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+  event.preventDefault();
+  const target = index + (event.key === "ArrowUp" ? -1 : 1);
+  if (state.mutationBusy || target < 0 || target >= count) return;
+  void Promise.resolve(reorderQueue(index, target)).then(() => {
+    $$(".queue-item", $("#queue-list"))[target]?.querySelector?.(".queue-handle")?.focus?.();
+  });
 }
 
 function setupQueueDragScroll() {
   const list = $("#queue-list");
-  document.addEventListener("dragover", event => {
-    if (state.draggingIndex === null) return;
-    queueDragPoint = { x: event.clientX, y: event.clientY };
-    showQueueDropIndicator(list, event.clientX, event.clientY);
-    if (queueDragFrame === null) queueDragFrame = requestAnimationFrame(animateQueueDragScroll);
-  });
-  list.addEventListener("dragover", event => {
-    if (state.draggingIndex === null || state.mutationBusy) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-    showQueueDropIndicator(list, event.clientX, event.clientY);
-  });
-  list.addEventListener("drop", event => {
-    if (state.draggingIndex === null) return;
-    event.preventDefault();
-    const source = state.draggingIndex;
-    const count = $$(".queue-item", list).length;
-    const slot = queueDropSlot(list, event.clientY);
-    clearQueueDropIndicators();
-    if (state.mutationBusy || !count) return;
-    const target = Math.max(0, Math.min(count - 1, slot - (source < slot ? 1 : 0)));
-    if (source !== target) void reorderQueue(source, target);
-  });
-  document.addEventListener("drop", event => {
-    if (state.draggingIndex !== null) event.preventDefault();
+  document.addEventListener("pointermove", moveQueueDrag);
+  document.addEventListener("pointerup", event => finishQueueDrag(event, true));
+  document.addEventListener("pointercancel", event => finishQueueDrag(event, false));
+  document.addEventListener("keydown", event => {
+    if (queueDrag && event.key === "Escape") { event.preventDefault(); finishQueueDrag(null, false); }
   });
   document.addEventListener("wheel", event => {
     if (state.draggingIndex === null) return;
     const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
     if (scrollQueueDragTarget(list, event.clientX, event.clientY, event.deltaY * scale)) {
       event.preventDefault();
+      followQueueDragPointer();
       showQueueDropIndicator(list, event.clientX, event.clientY);
     }
   }, { passive: false });
@@ -1647,8 +1707,148 @@ async function requestRestart(mode) {
   }
 }
 
+// keep in sync with the compact @media block in styles.css
+const COMPACT_QUERY = "(max-width: 860px)";
+
 function isCompactLayout() {
-  return Boolean(window.matchMedia?.("(max-width: 860px)")?.matches);
+  return Boolean(window.matchMedia?.(COMPACT_QUERY)?.matches);
+}
+
+// ---------- Resizable panels: the sidebar and the queue widen or narrow from the gaps beside the main panel ----------
+const PANEL_LAYOUT_KEY = "musicbot.panelWidths";
+const SIDEBAR_RAIL_QUERY = "(max-width: 1099px)";
+const SIDEBAR_RAIL_W = 72;
+const SIDEBAR_DEFAULT_W = 232;
+const PANEL_LIMITS = { sidebar: [200, 360], queue: [300, 560] };
+const MAIN_MIN_W = 440;
+const PANEL_KEY_STEP = 16;
+// null keeps the built-in width for that panel; the sidebar's rail is stored as SIDEBAR_RAIL_W
+const panelWidths = { sidebar: null, queue: null };
+
+const clampNumber = (value, min, max) => Math.min(max, Math.max(min, value));
+
+function snapSidebarWidth(value) {
+  const [min, max] = PANEL_LIMITS.sidebar;
+  // past the midpoint toward the rail, the sidebar folds into icons instead of squeezing its labels
+  return value < (SIDEBAR_RAIL_W + min) / 2 ? SIDEBAR_RAIL_W : clampNumber(value, min, max);
+}
+
+function defaultPanelWidth(side) {
+  if (side === "sidebar") return window.matchMedia?.(SIDEBAR_RAIL_QUERY)?.matches ? SIDEBAR_RAIL_W : SIDEBAR_DEFAULT_W;
+  return Math.round(clampNumber((window.innerWidth || 0) * .22 + 80, 320, 400));
+}
+
+function loadPanelWidths() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PANEL_LAYOUT_KEY) || "{}");
+    for (const side of ["sidebar", "queue"]) {
+      if (Number.isFinite(saved?.[side])) panelWidths[side] = saved[side];
+    }
+  } catch { /* storage can be blocked; the built-in widths still apply */ }
+}
+
+function savePanelWidths() {
+  try { localStorage.setItem(PANEL_LAYOUT_KEY, JSON.stringify(panelWidths)); } catch { /* per-viewer convenience only */ }
+}
+
+// anchor names the panel being resized, which then yields to the space left; otherwise the queue narrows first
+function layoutPanels(anchor = null) {
+  const shell = $("#app-shell");
+  if (!shell?.style?.setProperty) return;
+  if (isCompactLayout()) {
+    shell.style.removeProperty("--sidebar-w");
+    shell.style.removeProperty("--queue-w");
+    shell.classList.remove("is-sidebar-rail");
+    return;
+  }
+  const gutter = parseFloat(getComputedStyle(shell).getPropertyValue("--gutter")) || 8;
+  const room = shell.clientWidth - gutter * 4 - MAIN_MIN_W;
+  const [queueMin, queueMax] = PANEL_LIMITS.queue;
+  let sidebar = snapSidebarWidth(panelWidths.sidebar ?? defaultPanelWidth("sidebar"));
+  let queue = clampNumber(panelWidths.queue ?? defaultPanelWidth("queue"), queueMin, queueMax);
+  if (sidebar + queue > room) {
+    if (anchor === "sidebar") {
+      const fit = room - queue;
+      sidebar = sidebar === SIDEBAR_RAIL_W || fit < PANEL_LIMITS.sidebar[0] ? SIDEBAR_RAIL_W : Math.min(sidebar, fit);
+    } else {
+      queue = Math.max(queueMin, room - sidebar);
+      if (anchor !== "queue" && sidebar + queue > room) sidebar = SIDEBAR_RAIL_W;
+      queue = clampNumber(room - sidebar, queueMin, queue);
+    }
+  }
+  if (anchor) panelWidths[anchor] = anchor === "sidebar" ? sidebar : queue;
+  shell.style.setProperty("--sidebar-w", `${sidebar}px`);
+  shell.style.setProperty("--queue-w", `${queue}px`);
+  shell.classList.toggle("is-sidebar-rail", sidebar === SIDEBAR_RAIL_W);
+  const now = { sidebar, queue };
+  $$(".panel-resizer").forEach(handle => {
+    const side = handle.dataset.resize;
+    handle.setAttribute("aria-valuenow", String(Math.round(now[side])));
+    handle.setAttribute("aria-valuemin", String(side === "sidebar" ? SIDEBAR_RAIL_W : queueMin));
+    handle.setAttribute("aria-valuemax", String(PANEL_LIMITS[side][1]));
+  });
+  requestAnimationFrame(updateTrackTitleOverflow);
+}
+
+function currentPanelWidth(side) {
+  return parseFloat($("#app-shell")?.style?.getPropertyValue(side === "sidebar" ? "--sidebar-w" : "--queue-w")) || defaultPanelWidth(side);
+}
+
+function resizePanel(side, width) {
+  panelWidths[side] = side === "sidebar" ? snapSidebarWidth(width) : Math.round(width);
+  layoutPanels(side);
+}
+
+function setupPanelResizers() {
+  const shell = $("#app-shell");
+  loadPanelWidths();
+  $$(".panel-resizer").forEach(handle => {
+    const side = handle.dataset.resize;
+    // the queue sits right of its gap, so dragging left widens it
+    const direction = side === "sidebar" ? 1 : -1;
+    let drag = null;
+    handle.addEventListener("pointerdown", event => {
+      if (event.button > 0 || isCompactLayout()) return;
+      event.preventDefault();
+      handle.setPointerCapture?.(event.pointerId);
+      drag = { id: event.pointerId, startX: event.clientX, start: currentPanelWidth(side) };
+      shell.classList.add("is-resizing");
+    });
+    handle.addEventListener("pointermove", event => {
+      if (!drag || event.pointerId !== drag.id) return;
+      resizePanel(side, drag.start + (event.clientX - drag.startX) * direction);
+    });
+    const release = event => {
+      if (!drag || event.pointerId !== drag.id) return;
+      drag = null;
+      shell.classList.remove("is-resizing");
+      savePanelWidths();
+    };
+    handle.addEventListener("pointerup", release);
+    handle.addEventListener("pointercancel", release);
+    handle.addEventListener("lostpointercapture", release);
+    handle.addEventListener("dblclick", () => {
+      panelWidths[side] = null;
+      layoutPanels();
+      savePanelWidths();
+    });
+    handle.addEventListener("keydown", event => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const step = (event.key === "ArrowRight" ? 1 : -1) * direction;
+      const width = currentPanelWidth(side);
+      let next = width + step * PANEL_KEY_STEP;
+      // arrow keys step across the fold instead of being held back by the snap
+      if (side === "sidebar") {
+        if (width === SIDEBAR_RAIL_W && step > 0) next = PANEL_LIMITS.sidebar[0];
+        else if (width <= PANEL_LIMITS.sidebar[0] && step < 0) next = SIDEBAR_RAIL_W;
+      }
+      resizePanel(side, next);
+      savePanelWidths();
+    });
+  });
+  layoutPanels();
+  window.addEventListener?.("resize", () => layoutPanels());
 }
 
 function isPlayerOpen() {
@@ -1742,7 +1942,7 @@ function setupPlayerSheet() {
   bar.addEventListener("pointerup", release);
   bar.addEventListener("pointercancel", release);
   window.addEventListener?.("popstate", () => { if (isPlayerOpen()) setPlayerOpen(false, { fromHistory: true }); });
-  window.matchMedia?.("(max-width: 860px)")?.addEventListener?.("change", event => {
+  window.matchMedia?.(COMPACT_QUERY)?.addEventListener?.("change", event => {
     if (!event.matches && isPlayerOpen()) setPlayerOpen(false);
     syncTrackRole();
   });
@@ -1841,6 +2041,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#log-auto-scroll").addEventListener("change", event => { if (event.target.checked) { const view = $("#log-view"); view.scrollTop = view.scrollHeight; } });
   $("#log-view").addEventListener("scroll", syncLogAutoScroll, { passive: true });
   setupQueueDragScroll();
+  setupPanelResizers();
   setupPlayerSheet();
   document.addEventListener("keydown", handleShortcut);
   window.addEventListener?.("resize", () => requestAnimationFrame(updateTrackTitleOverflow));

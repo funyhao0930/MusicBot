@@ -145,6 +145,8 @@ DISCORD_EMBED_TOTAL_CHAR_LIMIT: int = 6000
 
 # Extraction data key that marks media a listener requested through the Web UI.
 WEBUI_REQUEST_INFO_KEY: str = "__webui_request"
+# Extraction data key holding {"id", "name"} of the Discord user behind a Web UI request, when known.
+WEBUI_REQUESTER_INFO_KEY: str = "__webui_requester"
 
 
 EMOJI_CHECK_MARK_BUTTON: str = "\u2705"

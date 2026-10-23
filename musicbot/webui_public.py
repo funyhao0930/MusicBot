@@ -8,7 +8,7 @@ import os
 import pathlib
 import re
 import secrets
-from typing import Any
+from typing import Any, Dict
 from urllib.parse import parse_qs, urlsplit
 
 from aiohttp import web
@@ -155,6 +155,10 @@ class MusicBotPublicWebUI(MusicBotWebUI):
             raise ValueError("Public proxy token must not be empty")
         self.proxy_token = token
         super().__init__(bot, host="127.0.0.1", port=port, auto_open=False)
+
+    def _web_requester(self, guild_id: int) -> Dict[str, Any] | None:
+        # public listeners are anonymous visitors, never the bot owner
+        return None
 
     @web.middleware
     async def _public_security_middleware(

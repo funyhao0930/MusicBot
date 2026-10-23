@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 
-from .constants import WEBUI_REQUEST_INFO_KEY
+from .constants import WEBUI_REQUEST_INFO_KEY, WEBUI_REQUESTER_INFO_KEY
 from .webui_i18n import localize_option, localize_permission_group
 
 
@@ -217,6 +217,11 @@ def entry_to_payload(entry: Any) -> Dict[str, Any]:
         requested_by_id = getattr(author, "id", None)
     elif bool(getattr(entry, "from_web_ui", False)):
         requested_by = WEBUI_REQUESTER_NAME
+        info = getattr(entry, "info", None)
+        requester = info.get(WEBUI_REQUESTER_INFO_KEY) if isinstance(info, MutableMapping) else None
+        if isinstance(requester, MutableMapping) and requester.get("name"):
+            requested_by = str(requester["name"])
+            requested_by_id = requester.get("id")
 
     duration = getattr(entry, "duration", None)
     return {
@@ -229,14 +234,18 @@ def entry_to_payload(entry: Any) -> Dict[str, Any]:
     }
 
 
-def mark_web_request(info: Any) -> None:
-    """Tag extracted media, and its playlist entries, as a Web UI listener request."""
+def mark_web_request(info: Any, requester: Dict[str, Any] | None = None) -> None:
+    """Tag extracted media, and its playlist entries, as a Web UI listener request.
+
+    `requester` is the Discord user behind the request ({"id", "name"}), when known.
+    """
     if not isinstance(info, MutableMapping):
         return
-    info[WEBUI_REQUEST_INFO_KEY] = True
     get_entries = getattr(info, "get_entries_dicts", None)
-    for entry_info in get_entries() if callable(get_entries) else []:
-        entry_info[WEBUI_REQUEST_INFO_KEY] = True
+    for target in [info, *(get_entries() if callable(get_entries) else [])]:
+        target[WEBUI_REQUEST_INFO_KEY] = True
+        if requester:
+            target[WEBUI_REQUESTER_INFO_KEY] = dict(requester)
 
 
 def redact_log_line(line: str) -> str:
@@ -394,6 +403,19 @@ class MusicBotWebUI:
         if player is None:
             raise LookupError("No active player for this server")
         return player
+
+    def _web_requester(self, guild_id: int) -> Dict[str, Any] | None:
+        """The local Web UI only answers this computer, so its listener is the bot owner."""
+        owner_id = getattr(getattr(self.bot, "config", None), "owner_id", 0)
+        if not owner_id:
+            return None
+        guild = self.bot.get_guild(guild_id) if hasattr(self.bot, "get_guild") else None
+        member = guild.get_member(owner_id) if guild is not None else None
+        user = member or (self.bot.get_user(owner_id) if hasattr(self.bot, "get_user") else None)
+        if user is None:
+            return None
+        name = getattr(user, "display_name", None) or getattr(user, "name", None)
+        return {"id": owner_id, "name": str(name)} if name else None
 
     @staticmethod
     def _player_state(player: Any) -> str:
@@ -610,7 +632,7 @@ class MusicBotWebUI:
             )
             if not info:
                 raise ValueError("No playable result was found")
-            mark_web_request(info)
+            mark_web_request(info, self._web_requester(guild_id))
             if bool(getattr(info, "has_entries", False)):
                 entries, _position = await player.playlist.import_from_info(
                     info, channel=None, author=None, head=False
@@ -936,11 +958,12 @@ class MusicBotWebUI:
             )
             entries = []
             skipped_count = 0
+            requester = self._web_requester(guild_id)
             for info in infos:
                 if not info:
                     skipped_count += 1
                     continue
-                mark_web_request(info)
+                mark_web_request(info, requester)
                 try:
                     if bool(getattr(info, "has_entries", False)):
                         imported, _position = await player.playlist.import_from_info(
