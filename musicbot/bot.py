@@ -164,6 +164,8 @@ class MusicBot(discord.Client):
         self.cached_app_info: Optional[discord.AppInfo] = None
         self.last_status: Optional[discord.BaseActivity] = None
         self.players: Dict[int, MusicPlayer] = {}
+        # queue snapshots taken when the Discord API drops voice, keyed by guild ID.
+        self._reconnect_snapshots: Dict[int, str] = {}
         self.task_pool: Set[AsyncTask] = set()
 
         self.config = Config(self._config_file)
@@ -1075,7 +1077,8 @@ class MusicBot(discord.Client):
         )
 
         async with self.aiolocks[_func_() + ":" + str(guild.id)]:
-            if deserialize:
+            # an in-memory reconnect snapshot is newer than the saved queue file.
+            if deserialize and guild.id not in self._reconnect_snapshots:
                 voice_client = await self.get_voice_client(channel)
                 player = await self.deserialize_queue(guild, voice_client)
 
@@ -1097,6 +1100,19 @@ class MusicBot(discord.Client):
                     )
 
                 voice_client = await self.get_voice_client(channel)
+
+                snapshot = self._reconnect_snapshots.pop(guild.id, None)
+                if snapshot and isinstance(voice_client, discord.VoiceClient):
+                    restored = MusicPlayer.from_json(
+                        snapshot, self, voice_client, Playlist(self)
+                    )
+                    if restored:
+                        log.info(
+                            "Restored %s queued entries after voice reconnect in guild:  %s",
+                            len(restored.playlist),
+                            guild,
+                        )
+                        return self._init_player(restored, guild=guild)
 
                 if isinstance(voice_client, discord.VoiceClient):
                     playlist = Playlist(self)
@@ -8305,6 +8321,12 @@ class MusicBot(discord.Client):
                 close_code,
                 state.name.upper() if state else None,
             )
+            # keep the queue in memory so the next player in this guild picks it up.
+            o_player = self.players.get(o_guild.id)
+            if o_player and (o_player.current_entry or o_player.playlist.entries):
+                self._reconnect_snapshots[o_guild.id] = o_player.serialize(
+                    sort_keys=True
+                )
             await self.disconnect_voice_client(o_guild)
 
             # reconnect if the guild is configured to auto-join.
@@ -8348,6 +8370,13 @@ class MusicBot(discord.Client):
                     log.warning(
                         "Cannot auto join channel:  %s",
                         before.channel,
+                        exc_info=True,
+                    )
+                except exceptions.CommandError:
+                    # snapshot stays in memory, the next summon will restore it.
+                    log.warning(
+                        "Could not reconnect to auto-joined channel:  %s",
+                        target_channel,
                         exc_info=True,
                     )
             return True
