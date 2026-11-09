@@ -715,7 +715,7 @@ const response = (ok, payload) => ({
         html = await response.text()
         # 2.0 stays the default; 3.0 is a second stylesheet the inline script enables before the first paint
         self.assertIn('id="ui-v3-stylesheet"', html)
-        self.assertIn('/assets/styles-v3.css?v=11', html)
+        self.assertIn('/assets/styles-v3.css?v=12', html)
         self.assertIn('media="not all"', html)
         self.assertIn('localStorage.getItem("musicbot.uiVersion")', html)
         self.assertIn('data-ui-version="2"', html)

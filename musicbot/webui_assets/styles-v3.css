@@ -209,6 +209,13 @@ html[data-ui="3"], html[data-ui="3"] body { background: var(--surface-sunken); }
 [data-ui="3"][data-theme="light"] .ui-theme-sun { display: block; }
 [data-ui="3"] .app-shell.is-sidebar-rail .sidebar-prefs { flex-direction: column; }
 [data-ui="3"] .app-shell.is-sidebar-rail .lg-theme-switch { margin-left: 0; }
+/* A sidebar dragged narrow (down to 200px) leaves the row less than the 188px that 介面 + the 2.0/3.0 pill + the
+   theme switch need, so they would overlap. The row measures itself (desktop only: on phones its width comes from
+   its content, which an inline-size container cannot have) and drops the 介面 label first; the group keeps its
+   aria-label. If it still does not fit, the switch wraps onto its own line instead of overlapping. */
+[data-ui="3"] .sidebar-prefs { flex-wrap: wrap; row-gap: 10px; }
+@media (min-width: 861px) { [data-ui="3"] .app-shell:not(.is-sidebar-rail) .sidebar-prefs { container: ui-prefs / inline-size; } }
+@container ui-prefs (max-width: 187.98px) { [data-ui="3"] .ui-version-label { display: none; } }
 
 /* ---------- Main panel and top bar ---------- */
 [data-ui="3"] .topbar { background: var(--surface); }
