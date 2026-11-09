@@ -98,6 +98,22 @@ typography:
     fontSize: "12.5px"
     fontWeight: 400
     lineHeight: 1.7
+  v3-body:
+    fontFamily: "Instrument Sans, PingFang TC, Microsoft JhengHei UI, Microsoft JhengHei, Noto Sans TC, system-ui, sans-serif"
+    fontSize: "15px"
+    fontWeight: 400
+    lineHeight: 1.45
+  v3-display:
+    fontFamily: "Doto, Geist Mono, ui-monospace, monospace"
+    fontSize: "40px"
+    fontWeight: 700
+    lineHeight: 1
+    fontFeature: "tnum"
+  v3-mono:
+    fontFamily: "Geist Mono, ui-monospace, SF Mono, Cascadia Mono, Consolas, monospace"
+    fontSize: "12.5px"
+    fontWeight: 400
+    lineHeight: 1.5
 rounded:
   thumb: "4px"
   row: "6px"
@@ -463,3 +479,63 @@ A centered penguin meme (124px, 12px radius), then a white 16px/750 line and a s
 - **Don't** make the play button pink, or put white text on pink.
 - **Don't** wrap row titles; truncate them with an ellipsis.
 - **Don't** use a meme to decorate a control. A meme may stand in for missing cover art wherever cover art appears, including inside the mini player's open-player button and the 正在播放 row, and may react beside content (stickers, toast avatars), but it is never a control's icon, badge or ornament.
+
+## 3.0 · Lumen Glass (opt-in)
+
+3.0 is a second skin that ships beside 2.0, built on the Lumen Glass design system (design canvas: https://claude.ai/artifact/ER3277pbpbioAAMyDSMtNH). Everything above still describes 2.0, which stays the default. 3.0 keeps the same HTML, the same app.js and the same layout grid. `styles-v3.css` loads on top of `styles.css` and every rule is scoped to `html[data-ui="3"]`.
+
+### Choosing a version
+- **Where:** the 介面 2.0／3.0 switch sits at the bottom of the sidebar (in the top strip on phones), outside the local-only pages, so public viewers get it too.
+- **Storage:** each browser keeps its own choice in localStorage. `musicbot.uiVersion` holds the version and `musicbot.uiTheme` the 3.0 night or day theme. An inline script in `<head>` applies both before the first paint, so the other look never flashes. For 3.0 it writes the two 3.0 stylesheets in with `document.write` instead of flipping their `media="not all"`. A sheet parsed as non-matching never holds back the first paint or the scripts, so flipping it would paint 2.0 for a moment. That flash showed at the start of the welcome animation. If storage is blocked, the page falls back to 2.0.
+- **Switching:** a switch reloads the page instead of restyling it live.
+- **Welcome (2.0 → 3.0 only):** before the reload, 2.0 blurs back and sinks into the 3.0 dark over 320ms. It also leaves `musicbot.uiWelcome` in sessionStorage. The head script sees the flag and keeps the app hidden. app.js then plays the welcome once and clears the flag:
+  - **Beam (0–420ms):** a light-saber beam draws out from the centre, with a white-hot core and a rim-coloured glow.
+  - **Capsule (from 360ms):** the beam condenses into a lit Lumen glass capsule. It springs out on the knob spring, flat and wide first.
+  - **Dot display (280–1700ms):** a dim 15×9 dot display wakes up from the middle outwards. A dot-matrix "3.0" then lights up left to right, and each dot flashes white-hot as it lands.
+  - **Rim light (440–1940ms):** the rim light runs one full turn counter-clockwise and rests at the theme's light source.
+  - **Greeting (from 1000ms):** 歡迎來到 3.0 rises out of a blur.
+  - **Exit (2300ms):** the stage dissolves forward and the dark lifts. The sidebar, main, queue and player bar rise in 70ms apart. On phones the sidebar only fades, because it carries the fixed tab bar.
+  - **Skip and fallbacks:** a click or any key skips to the exit. Reduced motion turns it into a short fade. A 6s CSS failsafe reveals the app if app.js never runs.
+- **Going back (3.0 → 2.0 only):** 3.0 slides its glass to 2.0, sinks into the dark, and leaves `musicbot.uiOldie` in sessionStorage. 2.0 then teases whoever went back, in 2.0's own voice (Cascadia Mono, the penguin, the pink accent). A page that simply loads in 2.0 never plays it.
+  - **CRT on (0–520ms):** an old CRT clicks on.
+  - **Rewind (380–1300ms):** a VHS ◀◀ REWIND winds 3.0 back to 2.0, with a jittering, colour-split picture, a tracking band and a 1999 camcorder date stamp.
+  - **Landing (1300ms):** it lands on 2.0 with a thunk and ▶ PLAY. `meme-arms` pops up cackling, and the bubble says 你個過時老人，還在用舊版，哈哈！
+  - **TV off (3900ms):** the set switches off like an old TV and 2.0 fades in. The shell only fades; a transform would carry the fixed phone bars along.
+  - **Skip and fallbacks:** a click or any key skips it. Reduced motion keeps only the landed frame. An 8s failsafe reveals the app.
+- **First visit:** 2.0 shows the 糖音機 3.0 來了 dialog. It offers 試試 3.0 or 先用 2.0, plus a 不再顯示 checkbox (`musicbot.uiIntroDismissed`). Once a version is picked or the box is ticked, the dialog does not come back.
+
+### Night ⇄ day
+Switching theme crossfades the whole page from the old theme to the new one over 1000ms on easeOutExpo (`cubic-bezier(.16, 1, .3, 1)`). A view transition snapshots the old theme, so every surface, glow and icon changes together, and the `html.is-theme-fading` class limits the timing to theme switches. The theme switch itself stays out of the crossfade (its own `view-transition-name`, only its live self shown): the old snapshot would otherwise still hold the knob where it started while the live knob springs across, showing two knobs. Browsers without view transitions, and reduced motion, switch instantly.
+
+### Look
+- **Source of the light and motion.** The look is not approximated in CSS. `lumen.css` is the design system's own component stylesheet (`components/bundle.css`). `lumen.js` is a React-free port of its engines from `components/bundle.js`:
+  - the ten glass layers (halo, three glows, lens, face, saber haze and bloom, white-hot rim, inner rim)
+  - the Liquid Glass edge lens (squircle bezel, IOR 1.5, R/G/B dispersion; Chromium only, frosted elsewhere)
+  - the fingertip light
+  - the knob spring (320/24) and the softer rim spring (110/13), so the light arc follows half a beat late and always turns counter-clockwise
+  - stretch with speed (up to 17%) and lift while held
+- **What uses it.**
+  - Buttons are GlassButtons; the play button is the lit one.
+  - Every settings switch and the night/day toggle are Lumen Switches; you can drag them, and they flip past halfway.
+  - Progress and volume are GlassSliders drawn under the native ranges.
+  - Fields are TextFields that draw their light around the edge on focus.
+  - The nav and the 2.0/3.0 switch use the gliding glass pill.
+  - Toasts are Lumen toasts at the top: they grow out of a small capsule, can be swiped up, and stack.
+  - The phone queue drawer follows the Sheet rules: one spring, dragged by the finger, closes past 30% of its travel (distance + speed × 0.12s), and the backdrop dims with it.
+- **Light is scarce.** Surfaces are glass: a `glass-top` → `glass-bottom` gradient with a top bevel, an inner hairline and a soft drop. The play button is the only lit element, with a white-hot ring 4px off the glass and a rim-coloured glow (moon `#8f8cff` at night, sun `#ffa50f` by day). While playback is paused, it glows in the danger red (`--danger-ink`, the light of 刪除清單) instead, so a stopped player is obvious. Other glass buttons light their rim only on hover.
+- **Ambient light:** one rim-coloured radial glow sits behind the cover. It replaces 2.0's blurred cover tint, and the bar ambient is off.
+- **Wells:** fields, switches, rails and the version switch are sunken (`surface-sunken` plus `shadow-well`). A focused field draws the rim light around its edge, with a 1px focus line.
+- **Fills:** progress and volume fill with a short light-saber in the rim colour with a hot core, and their thumbs are glass beads.
+- **Pixel icons:** every svg marked `data-px` is swapped by app.js for an 11×11 dot-matrix glyph. Each dot covers 78% of its cell with 28% rounding, and the moon's dark side uses dim dots. No stroked icons appear in 3.0.
+- **Type:**
+  - Instrument Sans is used for the interface, falling back to the CJK system faces for Chinese.
+  - Doto is used only for numerals and short Latin: the stage clock and the 2.0／3.0 labels.
+  - Geist Mono is used for times, counts and logs.
+  - All three are self-hosted woff2 under the OFL; the licences sit next to them.
+- **Colour roles:** the 2.0 token names stay the same but point at Lumen tokens. Candy pink is gone. Selection, playing and focus use `accent-ink` for text and the rim colour for fills. `danger` means errors only.
+
+### Phones (≤860px)
+- **Home:** the player is the home page, showing the cover, title, progress and the five transport buttons.
+- **Queue:** the queue is a glass drawer whose heading peeks above a floating glass tab bar. Tapping the heading or grabber opens it. A pull down, a tap on the dimmed area, Esc or the back button closes it.
+- **Other pages:** other pages show a slim glass mini player above the tab bar, and tapping it goes home.
+- **Version switch:** the 2.0／3.0 switch and the night or day toggle live in the top strip.

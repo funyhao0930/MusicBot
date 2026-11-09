@@ -42,14 +42,82 @@ const PLAY_PAUSE_PATHS = {
   play: ["M7 4.5 L12.5 8 L12.5 16 L7 19.5 Z", "M12.5 8 L19.5 12 L19.5 12 L12.5 16 Z"],
   pause: ["M6.5 5 L10.2 5 L10.2 19 L6.5 19 Z", "M13.8 5 L17.5 5 L17.5 19 L13.8 19 Z"],
 };
-const ADD_DONE_ICON = '<svg class="done-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+// data-px names the 11x11 dot-matrix glyph that 3.0 swaps in; 2.0 keeps the stroked paths
+const ADD_DONE_ICON = '<svg class="done-check" data-px="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const QUEUE_ACTION_ICONS = {
-  grip: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14"/><path d="M5 12h14"/><path d="M5 16h14"/></svg>',
-  queue: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>',
-  remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
+  grip: '<svg data-px="grip" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14"/><path d="M5 12h14"/><path d="M5 16h14"/></svg>',
+  queue: '<svg data-px="queue" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>',
+  remove: '<svg data-px="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
 };
-const NOTE_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
-const THUMB_PLAY_ICON = '<span class="thumb-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg></span>';
+const NOTE_ICON = '<svg class="i" data-px="note" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+const THUMB_PLAY_ICON = '<span class="thumb-play" aria-hidden="true"><svg data-px="play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg></span>';
+
+// ---------- 3.0 pixel icons ----------
+// "#" is a lit dot and "o" a dim one (the moon's dark side). "a" and "b" are lit dots grouped into
+// <g class="px-a|px-b"> so 3.0 can move them like 2.0 moves its paths: arrowheads, skip triangles, sound waves.
+const PIXEL_ICONS = {
+  play: ["...........", "...#.......", "...##......", "...###.....", "...####....", "...#####...", "...####....", "...###.....", "...##......", "...#.......", "..........."],
+  pause: ["...........", "..##...##..", "..##...##..", "..##...##..", "..##...##..", "..##...##..", "..##...##..", "..##...##..", "..##...##..", "..##...##..", "..........."],
+  next: ["...........", "..a.....#..", "..aa....#..", "..aaa...#..", "..aaaa..#..", "..aaaaa.#..", "..aaaa..#..", "..aaa...#..", "..aa....#..", "..a.....#..", "..........."],
+  prev: ["...........", "..#.....a..", "..#....aa..", "..#...aaa..", "..#..aaaa..", "..#.aaaaa..", "..#..aaaa..", "..#...aaa..", "..#....aa..", "..#.....a..", "..........."],
+  stop: ["...........", "...........", "..#######..", "..#######..", "..#######..", "..#######..", "..#######..", "..#######..", "..#######..", "...........", "..........."],
+  shuffle: ["...........", "...........", "........a..", "##....##aaa", "..#..#..a..", "...##......", "...##......", "..#..#..b..", "##....##bbb", "........b..", "..........."],
+  repeat: ["...........", ".......a...", ".######aa..", ".#.....a...", ".#.........", ".#.......#.", ".........#.", "...b.....#.", "..bb######.", "...b.......", "..........."],
+  volume: ["...........", "....#...b..", "...##....b.", "####..a..b.", "####..a..b.", "####..a..b.", "####..a..b.", "...##....b.", "....#...b..", "...........", "..........."],
+  search: ["...........", "..####.....", ".#....#....", "#......#...", "#......#...", "#......#...", ".#....#....", "..####.#...", "........#..", ".........#.", "..........."],
+  settings: ["....###....", ".##.###.##.", ".#########.", "..#######..", "####...####", "####...####", "####...####", "..#######..", ".#########.", ".##.###.##.", "....###...."],
+  home: ["...........", ".....#.....", "....###....", "...#####...", "..#######..", ".#########.", "..#######..", "..##...##..", "..##...##..", "..##...##..", "..........."],
+  list: ["...........", "...........", "##.########", "...........", "##.########", "...........", "##.########", "...........", "##.########", "...........", "..........."],
+  queue: ["...........", "#######....", "...........", "#######....", "...........", "####..#....", "......##...", "####..###..", "......##...", "......#....", "..........."],
+  lock: ["...........", "...#####...", "..#.....#..", "..#.....#..", ".#########.", ".#########.", ".####.####.", ".####.####.", ".#########.", ".#########.", "..........."],
+  log: ["...........", "..#######..", "..#.....##.", "..#.###..#.", "..#......#.", "..#.####.#.", "..#......#.", "..#.###..#.", "..#......#.", "..########.", "..........."],
+  plus: ["...........", "...........", ".....#.....", ".....#.....", ".....#.....", "..#######..", ".....#.....", ".....#.....", ".....#.....", "...........", "..........."],
+  check: ["...........", "...........", "...........", ".........#.", "........#..", ".#.....#...", "..#...#....", "...#.#.....", "....#......", "...........", "..........."],
+  user: ["...........", "....###....", "...#####...", "...#####...", "...#####...", "....###....", "...........", "..#######..", ".#########.", ".#########.", "..........."],
+  moon: ["...........", "...###oo...", "..###oooo..", ".###oooooo.", ".###oooooo.", ".###oooooo.", ".###oooooo.", ".####ooooo.", "..#####oo..", "...#####...", "..........."],
+  sun: [".....#.....", ".#.......#.", "....###....", "...#####...", "..#######..", "#.#######.#", "..#######..", "...#####...", "....###....", ".#.......#.", ".....#....."],
+  note: ["...........", "....######.", "....######.", "....#....#.", "....#....#.", "....#....#.", "..###..###.", ".####.####.", ".####.####.", "..##...##..", "..........."],
+  trash: ["...........", "....###....", ".#########.", "...........", "..#.#.#.#..", "..#.#.#.#..", "..#.#.#.#..", "..#.#.#.#..", "..#.#.#.#..", "...#####...", "..........."],
+  grip: ["...........", "...........", "....#.#....", "...........", "....#.#....", "...........", "....#.#....", "...........", "....#.#....", "...........", "..........."],
+  down: ["...........", "...........", "...........", "..#.....#..", "...#...#...", "....#.#....", ".....#.....", "...........", "...........", "...........", "..........."],
+};
+
+function pixelIconMarkup(name) {
+  const rows = PIXEL_ICONS[name];
+  if (!rows) return "";
+  const groups = { base: "", a: "", b: "" };
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x += 1) {
+      const dot = row[x];
+      if (dot === ".") continue;
+      // each dot gets its own small delay and scatter, so a glyph that appears assembles dot by dot
+      const delay = Math.round(((x * 7 + y * 13) % 29) / 28 * 280);
+      const sx = (((x * 5 + y * 3) % 5) - 2) * .6;
+      const sy = (((x * 3 + y * 7) % 5) - 2) * .6;
+      const rect = `<rect class="${dot === "o" ? "px-off" : "px-on"}" x="${x + .11}" y="${y + .11}" width=".78" height=".78" rx=".22" style="--d:${delay}ms;--sx:${sx}px;--sy:${sy}px"/>`;
+      groups[dot === "a" || dot === "b" ? dot : "base"] += rect;
+    }
+  });
+  return groups.base
+    + (groups.a ? `<g class="px-a">${groups.a}</g>` : "")
+    + (groups.b ? `<g class="px-b">${groups.b}</g>` : "");
+}
+
+// swaps every svg[data-px] under root for its dot-matrix glyph, once
+function applyPixelIcons(root = document) {
+  if (uiVersion() !== "3" || typeof root?.querySelectorAll !== "function") return;
+  const svgs = [...root.querySelectorAll("svg[data-px]")];
+  if (root.matches?.("svg[data-px]")) svgs.push(root);
+  svgs.forEach(svg => {
+    if (svg.dataset?.pxDone) return;
+    const markup = pixelIconMarkup(svg.dataset?.px);
+    if (!markup) return;
+    svg.innerHTML = markup;
+    svg.setAttribute?.("viewBox", "0 0 11 11");
+    svg.classList?.add?.("px");
+    svg.dataset.pxDone = "1";
+  });
+}
 // YouTube's 4:3 thumbnails letterbox 16:9 videos; those get zoomed past the bars
 const LETTERBOXED_THUMBNAIL = /\/(?:hq|sd)?default\.(?:jpg|webp)/;
 const QUEUE_SCROLL_EDGE = 64;
@@ -90,6 +158,12 @@ function kickTransportGlyph(button) {
 function setProgressVisual(seconds, total) {
   const percent = total > 0 ? Math.min(100, Math.max(0, seconds / total * 100)) : 0;
   $("#progress-track")?.style?.setProperty?.("--progress-fill", `${percent}%`);
+  // the 3.0 stage repeats the time in dot-matrix digits, big enough to read from across the desk
+  const clock = $("#np-clock");
+  if (clock && "textContent" in clock) clock.textContent = formatTime(seconds);
+  const clockTotal = $("#np-clock-total");
+  if (clockTotal && "textContent" in clockTotal) clockTotal.textContent = `/ ${formatTime(total)}`;
+  globalThis.LumenLite?.syncRange?.($("#progress-range"));
 }
 
 function setVolumeVisual(volume) {
@@ -100,16 +174,22 @@ function setVolumeVisual(volume) {
   icon.classList.add(`lv-${level}`);
 }
 
+function buttonLabel(button) {
+  return button?.querySelector?.(":scope > .lg-btn-label") || button;
+}
+
 function flashAddButton(form) {
   const button = form?.querySelector?.('button[type="submit"]');
   if (!button || typeof button.classList?.add !== "function") return;
   clearTimeout(button.doneTimer);
-  if (!button.dataset.label) button.dataset.label = button.textContent;
+  // a 3.0 glass button keeps its light layers; only the label inside changes
+  const label = buttonLabel(button);
+  if (!button.dataset.label) button.dataset.label = label.textContent;
   button.classList.add("is-done");
-  button.innerHTML = `${ADD_DONE_ICON}已加入`;
+  label.innerHTML = `${ADD_DONE_ICON}已加入`;
   button.doneTimer = setTimeout(() => {
     button.classList.remove("is-done");
-    button.textContent = button.dataset.label;
+    label.textContent = button.dataset.label;
   }, 1400);
 }
 
@@ -156,7 +236,15 @@ function formatTime(value) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+function lumen() {
+  const L = globalThis.LumenLite;
+  return uiVersion() === "3" && L?.active?.() ? L : null;
+}
+
 function toast(message, type = "info", meme = type === "error" ? "gugugaga" : "") {
+  // 3.0: a Lumen glass capsule blown up at the top of the screen; swipe it up to dismiss
+  const L = lumen();
+  if (L) { L.toast(message, { error: type === "error", meme, duration: 3600 }); return; }
   const node = document.createElement("div");
   node.className = `toast${type === "error" ? " is-error" : ""}${meme ? " has-meme" : ""}`;
   node.textContent = message;
@@ -183,6 +271,8 @@ function dismissToast(node) {
 
 // stays up until the returned dismiss runs, for requests that may take a while
 function pendingToast(message) {
+  const L = lumen();
+  if (L) return L.toast(message, { spinner: true, duration: Infinity });
   const node = document.createElement("div");
   node.className = "toast is-pending";
   node.setAttribute?.("role", "status");
@@ -282,6 +372,361 @@ function isPublicMode() {
   return document.documentElement?.dataset?.mode === "public";
 }
 
+// ---------- Interface version (2.0 / 3.0) and the 3.0 night / day theme ----------
+// each browser keeps its own choice; the inline script in index.html applies it before the first paint
+const UI_VERSION_KEY = "musicbot.uiVersion";
+const UI_THEME_KEY = "musicbot.uiTheme";
+const UI_INTRO_KEY = "musicbot.uiIntroDismissed";
+// set by 2.0 right before it reloads into 3.0; read once by the head script and playUiWelcome()
+const UI_WELCOME_KEY = "musicbot.uiWelcome";
+// the same for 3.0 → 2.0: 2.0 then plays playUiOldie() once
+const UI_OLDIE_KEY = "musicbot.uiOldie";
+
+function readPreference(key) {
+  try { return globalThis.localStorage?.getItem?.(key) ?? null; } catch { return null; }
+}
+
+function writePreference(key, value) {
+  try { globalThis.localStorage?.setItem?.(key, value); return true; } catch { return false; }
+}
+
+function uiVersion() {
+  return document.documentElement?.dataset?.ui === "3" ? "3" : "2";
+}
+
+function uiTheme() {
+  return document.documentElement?.dataset?.theme === "light" ? "light" : "dark";
+}
+
+// a fresh page is simpler and safer than restyling a live one: the shells differ on phones
+function setUiVersion(version) {
+  const next = version === "3" ? "3" : "2";
+  writePreference(UI_VERSION_KEY, next);
+  if (next === uiVersion()) return;
+  // the next page plays its arrival once: the 3.0 welcome, or 2.0 teasing whoever went back to it
+  try { globalThis.sessionStorage?.setItem?.(next === "3" ? UI_WELCOME_KEY : UI_OLDIE_KEY, "1"); } catch { /* no arrival then */ }
+  const reload = () => globalThis.location?.reload?.();
+  if (prefersReducedMotion()) { reload(); return; }
+  // the old look blurs back and sinks into the dark the next one starts from, so the reload never flashes
+  const root = document.documentElement;
+  const leave = () => {
+    root?.style?.setProperty?.("--ui-leave-bg", next === "2" ? "#050506" : readPreference(UI_THEME_KEY) === "light" ? "#e3e1dc" : "#08090b");
+    root?.classList?.add?.("is-ui-leaving");
+  };
+  // 3.0 first lets the glass slide over to the chosen version
+  let slide = 0;
+  const options = $(".ui-version-options");
+  if (lumen() && options?._lgPill) {
+    $$("[data-ui-version]").forEach(button => button.classList?.toggle?.("is-active", button.dataset.uiVersion === next));
+    lumen().syncPill(options);
+    slide = 260;
+  }
+  if (slide) setTimeout(leave, slide);
+  else leave();
+  setTimeout(reload, slide + 320);
+}
+
+function prefersReducedMotion() {
+  return !!globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+}
+
+/* ---------- 3.0 welcome (2.0 → 3.0) ----------
+   A light-saber beam draws out from the centre and condenses into a lit glass capsule; inside it a dot-matrix "3.0"
+   boots up left to right while the rim light runs once around counter-clockwise and comes to rest at its light source.
+   Then the stage dissolves and the panels rise in one after another. Any click or key skips straight to the end. */
+const WELCOME_MARK = [
+  ".###.....###.",
+  "#...#...#...#",
+  "....#...#...#",
+  "..##....#...#",
+  "....#...#...#",
+  "#...#...#...#",
+  ".###..#..###.",
+];
+
+function welcomeMarkMarkup() {
+  const cols = WELCOME_MARK[0].length + 2, rows = WELCOME_MARK.length + 2;
+  const off = [], on = [];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const at = `x="${x + .11}" y="${y + .11}" width=".78" height=".78" rx=".22"`;
+      // the dim display wakes up from the middle outwards
+      const dist = Math.hypot(x - (cols - 1) / 2, (y - (rows - 1) / 2) * 1.4);
+      off.push(`<rect class="w-off" ${at} style="--d:${Math.round(280 + dist * 26)}ms"/>`);
+      if (WELCOME_MARK[y - 1]?.[x - 1] !== "#") continue;
+      // lit dots sweep in left to right, each flying in from a little scatter and flashing white-hot as it lands
+      const angle = Math.random() * Math.PI * 2, reach = 0.8 + Math.random() * 0.9;
+      const delay = Math.round(560 + x * 40 + y * 8 + Math.random() * 40);
+      on.push(`<rect class="w-on" ${at} style="--d:${delay}ms;--sx:${(Math.cos(angle) * reach).toFixed(2)}px;--sy:${(Math.sin(angle) * reach).toFixed(2)}px"/>`);
+    }
+  }
+  return `<svg class="v3-welcome-mark" viewBox="0 0 ${cols} ${rows}" aria-hidden="true">${off.join("")}${on.join("")}</svg>`;
+}
+
+function playUiWelcome() {
+  const root = document.documentElement;
+  if (root?.dataset?.uiWelcome !== "1") return;
+  try { globalThis.sessionStorage?.removeItem?.(UI_WELCOME_KEY); } catch { /* already gone */ }
+  const L = lumen();
+  const reduce = prefersReducedMotion();
+  const overlay = document.createElement("div");
+  overlay.className = "v3-welcome" + (reduce ? " is-reduced" : "");
+  overlay.setAttribute("role", "status");
+  overlay.innerHTML = `
+    <span class="v3-welcome-ambient" aria-hidden="true"></span>
+    <div class="v3-welcome-stage" aria-hidden="true">
+      <div class="v3-welcome-core">
+        <span class="v3-welcome-beam"></span>
+        <div class="v3-welcome-badge lg-glass">${welcomeMarkMarkup()}</div>
+      </div>
+      <p class="v3-welcome-title">歡迎來到 <span>3.0</span></p>
+      <p class="v3-welcome-sub">Lumen Glass · 光與玻璃</p>
+    </div>
+    <span class="visually-hidden">已切換到 3.0 介面</span>`;
+  const badge = overlay.querySelector(".v3-welcome-badge");
+  if (L?.layerSpans) badge.prepend(L.layerSpans());
+  document.body.appendChild(overlay);
+  if (L?.attachLens) L.attachLens(badge);
+
+  const timers = [];
+  let finished = false, spinFrame = 0;
+  const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+
+  // the capsule forms out of the beam on the knob spring: flat and wide first, then it pops round with a small overshoot
+  const pop = L?.createSpring?.(p => {
+    badge.style.transform = `scale(${(.5 + .5 * p).toFixed(4)}, ${(.12 + .88 * p).toFixed(4)})`;
+    badge.style.opacity = Math.min(1, p * 2.5).toFixed(3);
+  }, 0.001, 300, 20);
+  if (pop) { pop.jump(0); later(() => pop.to(1), reduce ? 0 : 360); }
+  else badge.style.opacity = "1";
+
+  // the rim light runs one full turn counter-clockwise and comes to rest where the theme's light comes from
+  const rest = root.dataset.theme === "light" ? 20 : 200;
+  const spinFrom = performance.now() + 440, spinFor = 1500;
+  const spin = now => {
+    const t = Math.min(1, Math.max(0, (now - spinFrom) / spinFor));
+    const eased = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    badge.style.setProperty("--lg-angle", `${(rest + 360 * (1 - eased)).toFixed(2)}deg`);
+    spinFrame = t < 1 && !finished ? requestAnimationFrame(spin) : 0;
+  };
+  if (reduce) badge.style.setProperty("--lg-angle", `${rest}deg`);
+  else spinFrame = requestAnimationFrame(spin);
+
+  const shell = $("#app-shell");
+  function finish(fast = false) {
+    if (finished) return;
+    finished = true;
+    timers.forEach(clearTimeout);
+    cancelAnimationFrame(spinFrame);
+    globalThis.removeEventListener?.("keydown", skip, true);
+    overlay.removeEventListener("pointerdown", skip);
+    overlay.classList.add("is-leaving");
+    if (fast) overlay.classList.add("is-fast");
+    delete root.dataset.uiWelcome;
+    shell?.classList.add("is-welcome-rise");
+    setTimeout(() => {
+      overlay.remove();
+      pop?.stop?.();
+      shell?.classList.remove("is-welcome-rise");
+    }, fast ? 760 : 1100);
+  }
+  function skip(event) {
+    if (event.type === "keydown" && ["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+    event.preventDefault?.();
+    finish(true);
+  }
+  globalThis.addEventListener?.("keydown", skip, true);
+  overlay.addEventListener("pointerdown", skip);
+  later(() => finish(), reduce ? 1300 : 2300);
+}
+
+/* ---------- 2.0 arrival (3.0 → 2.0 only) ----------
+   An old CRT clicks on, a VHS "◀◀ REWIND" winds 3.0 back down to 2.0, then the penguin pops up flapping and laughs at
+   whoever went back. The set switches off like an old TV to reveal 2.0. Any click or key skips to the end. */
+function playUiOldie() {
+  const root = document.documentElement;
+  if (root?.dataset?.uiOldie !== "1") return;
+  try { globalThis.sessionStorage?.removeItem?.(UI_OLDIE_KEY); } catch { /* already gone */ }
+  const reduce = prefersReducedMotion();
+  const overlay = document.createElement("div");
+  overlay.className = "ui-oldie" + (reduce ? " is-reduced" : "");
+  overlay.setAttribute("role", "status");
+  overlay.innerHTML = `
+    <div class="ui-oldie-screen" aria-hidden="true">
+      <span class="ui-oldie-osd"><span class="ui-oldie-osd-icon">◀◀</span> <span class="ui-oldie-osd-label">REWIND</span></span>
+      <span class="ui-oldie-stamp">1999 12 31&nbsp;&nbsp;PM 11:59</span>
+      <div class="ui-oldie-body">
+        <p class="ui-oldie-version"><span class="ui-oldie-digits">3.0</span></p>
+        <figure class="ui-oldie-mascot">
+          <img src="/assets/meme-arms.webp" alt="" width="152" height="152" decoding="async">
+          <figcaption class="ui-oldie-bubble">你個過時老人，<br>還在用舊版，<span class="ui-oldie-haha"><span>哈</span><span>哈</span><span>！</span></span></figcaption>
+        </figure>
+      </div>
+      <span class="ui-oldie-tracking"></span>
+      <span class="ui-oldie-scanlines"></span>
+    </div>
+    <span class="visually-hidden">已切換回 2.0 介面。你個過時老人，還在用舊版，哈哈！</span>`;
+  document.body.appendChild(overlay);
+
+  const timers = [];
+  let finished = false;
+  const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+  const digits = overlay.querySelector(".ui-oldie-digits");
+  const label = overlay.querySelector(".ui-oldie-osd-label");
+  const icon = overlay.querySelector(".ui-oldie-osd-icon");
+  const landed = () => {
+    digits.textContent = "2.0";
+    overlay.classList.add("is-landed");
+    label.textContent = "PLAY";
+    icon.textContent = "▶";
+  };
+  if (reduce) landed();
+  else {
+    // 3.0 → 2.9 → … → 2.0, fast at first and dragging at the end like a tape running out
+    let at = 380;
+    for (let step = 1; step <= 10; step++) {
+      at += 30 + step * step * 1.6;
+      const value = (30 - step) / 10;
+      later(step === 10 ? landed : () => { digits.textContent = value.toFixed(1); }, at);
+    }
+  }
+
+  const shell = $("#app-shell");
+  function finish(fast = false) {
+    if (finished) return;
+    finished = true;
+    timers.forEach(clearTimeout);
+    globalThis.removeEventListener?.("keydown", skip, true);
+    overlay.removeEventListener("pointerdown", skip);
+    if (!overlay.classList.contains("is-landed")) landed();
+    overlay.classList.add("is-leaving");
+    if (fast) overlay.classList.add("is-fast");
+    delete root.dataset.uiOldie;
+    shell?.classList.add("is-oldie-reveal");
+    setTimeout(() => {
+      overlay.remove();
+      shell?.classList.remove("is-oldie-reveal");
+    }, fast ? 700 : 1000);
+  }
+  function skip(event) {
+    if (event.type === "keydown" && ["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+    event.preventDefault?.();
+    finish(true);
+  }
+  globalThis.addEventListener?.("keydown", skip, true);
+  overlay.addEventListener("pointerdown", skip);
+  later(() => finish(), reduce ? 2600 : 3900);
+}
+
+function setUiTheme(theme) {
+  const next = theme === "light" ? "light" : "dark";
+  writePreference(UI_THEME_KEY, next);
+  const root = document.documentElement;
+  const previous = root?.dataset?.theme;
+  const apply = () => {
+    if (root?.dataset) root.dataset.theme = next;
+    syncUiControls();
+  };
+  // night ⇄ day crossfades the whole page from the old theme to the new one on easeOutExpo (styles-v3.css);
+  // browsers without view transitions just switch
+  const fade = previous && previous !== next && uiVersion() === "3" && !prefersReducedMotion()
+    && typeof document.startViewTransition === "function";
+  if (!fade) { apply(); return; }
+  root.classList.add("is-theme-fading");
+  const transition = document.startViewTransition(apply);
+  transition.finished.finally(() => root.classList.remove("is-theme-fading"));
+}
+
+// first visit: 2.0 shows, and the intro invites a try of 3.0 until someone picks a version or ticks 不再顯示
+function shouldShowUiIntro() {
+  return uiVersion() === "2" && readPreference(UI_VERSION_KEY) === null && readPreference(UI_INTRO_KEY) !== "1";
+}
+
+function syncUiControls() {
+  const version = uiVersion();
+  $$("[data-ui-version]").forEach(button => {
+    const active = button.dataset.uiVersion === version;
+    button.classList?.toggle?.("is-active", active);
+    button.setAttribute?.("aria-pressed", String(active));
+  });
+  const toggle = $("#ui-theme-toggle");
+  if (toggle?.setAttribute) {
+    const light = uiTheme() === "light";
+    toggle.checked = light;
+    toggle.setAttribute("aria-label", light ? "晝主題：開" : "晝主題：關");
+    toggle._lgSwitch?.sync?.();
+  }
+  const meta = $('meta[name="theme-color"]');
+  if (meta?.setAttribute && version === "3") meta.setAttribute("content", uiTheme() === "light" ? "#e8e6e1" : "#08090b");
+}
+
+// 3.0 dresses this page's own controls in Lumen Glass (lumen.js); app.js keeps driving the same elements
+function enhanceLumen(root = document) {
+  const L = lumen();
+  if (!L || typeof root?.querySelectorAll !== "function") return;
+  const find = selector => [...(root.matches?.(selector) ? [root] : []), ...root.querySelectorAll(selector)];
+  // the play button is the one lit thing on screen; every other button is glass that lights on hover and press
+  find("#play-toggle").forEach(button => L.button(button, { lit: true }));
+  find(".button").forEach(button => L.button(button));
+  find("#progress-range").forEach(input => L.range(input, { host: $("#progress-track"), className: "lg-range-progress" }));
+  find("#volume-range").forEach(input => {
+    const wrap = document.createElement("span");
+    wrap.className = "lg-volume-host";
+    input.parentNode.insertBefore(wrap, input);
+    wrap.append(input);
+    L.range(input, { host: wrap, className: "lg-range-volume" });
+  });
+  find("#ui-theme-toggle").forEach(input => {
+    const icon = document.createElement("span");
+    icon.className = "lg-theme-icon";
+    icon.innerHTML = '<svg class="ui-theme-moon" data-px="moon" viewBox="0 0 24 24" aria-hidden="true"></svg><svg class="ui-theme-sun" data-px="sun" viewBox="0 0 24 24" aria-hidden="true"></svg>';
+    L.switchify(input, { icon, className: "lg-theme-switch" });
+    applyPixelIcons(icon);
+  });
+  find("input.switch").forEach(input => L.switchify(input));
+  find(".search-field").forEach(box => L.field(box));
+  find(".setting-control input[type='text'], .setting-control input[type='number'], #playlist-create-name, #queue-new-playlist-name").forEach(input => L.fieldAround(input));
+  find("#main-nav").forEach(nav => L.pill(nav, { items: ".nav-item", active: ".nav-item.is-active", axis: () => (isCompactLayout() ? "x" : "y"), rim: () => (isCompactLayout() ? "dial" : "side"), bar: () => !isCompactLayout(), className: "lg-nav-pill" }));
+  find(".ui-version-options").forEach(group => L.pill(group, { items: ".ui-version-option", active: ".ui-version-option.is-active", className: "lg-version-pill" }));
+}
+
+function closeUiIntro({ tryNew = false } = {}) {
+  const dialog = $("#ui-intro");
+  if ($("#ui-intro-dismiss")?.checked) writePreference(UI_INTRO_KEY, "1");
+  dialog?.close?.();
+  if (tryNew) setUiVersion("3");
+}
+
+function setupUiVersion() {
+  $$("[data-ui-version]").forEach(button => button.addEventListener?.("click", () => setUiVersion(button.dataset.uiVersion)));
+  $("#ui-theme-toggle")?.addEventListener?.("change", event => setUiTheme(event.target.checked ? "light" : "dark"));
+  $("#ui-intro-try")?.addEventListener?.("click", () => closeUiIntro({ tryNew: true }));
+  $("#ui-intro-stay")?.addEventListener?.("click", () => closeUiIntro());
+  // Esc closes it like 先用 2.0, still honouring the checkbox
+  $("#ui-intro")?.addEventListener?.("cancel", () => { if ($("#ui-intro-dismiss")?.checked) writePreference(UI_INTRO_KEY, "1"); });
+  syncUiControls();
+  if (uiVersion() === "3") {
+    applyPixelIcons();
+    enhanceLumen();
+    playUiWelcome();
+    // the sticky top bar only covers the page once it scrolls; at the top it sits under it so glows are not cut off
+    const main = $("#main");
+    main?.addEventListener?.("scroll", () => main.classList.toggle("is-scrolled", main.scrollTop > 1), { passive: true });
+    // rows rebuilt later (queue, playlists, settings) carry data-px and controls too
+    if (typeof MutationObserver === "function" && document.body) {
+      new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
+        if (node.nodeType !== 1) return;
+        applyPixelIcons(node);
+        enhanceLumen(node);
+      }))).observe(document.body, { childList: true, subtree: true });
+    }
+  } else playUiOldie();
+  if (shouldShowUiIntro()) {
+    const dialog = $("#ui-intro");
+    setTimeout(() => { if (!dialog?.open && shouldShowUiIntro()) dialog?.showModal?.(); }, 900);
+  }
+}
+
 function switchPage(name) {
   const current = $(".page.is-active");
   const next = $(`[data-page-panel="${name}"]`);
@@ -299,6 +744,7 @@ function switchPage(name) {
     if (active) item.setAttribute?.("aria-current", "page");
     else item.removeAttribute?.("aria-current");
   });
+  globalThis.LumenLite?.syncPill?.($("#main-nav"));
   const main = $("#main");
   if (main && typeof main.scrollTo === "function") main.scrollTo({ top: 0 });
   const title = $("#page-title");
@@ -603,6 +1049,7 @@ function renderPlayer(player) {
   const volume = Math.round((player?.volume ?? .25) * 100);
   $("#volume-range").value = volume;
   $("#volume-range").style?.setProperty?.("--range-fill", `${volume}%`);
+  globalThis.LumenLite?.syncRange?.($("#volume-range"));
   $("#volume-output").value = `${volume}%`;
   syncLoudMeme(volume);
   setVolumeVisual(volume);
@@ -1010,7 +1457,7 @@ async function submitQueuePlaylistDialog(event) {
   }
   const button = $("#queue-playlist-submit");
   return runMutation(async () => {
-    button.textContent = "加入中";
+    buttonLabel(button).textContent = "加入中";
     try {
       const result = await submitQueuePlaylistBatch(name);
       const existing = state.playlists.find(playlist => playlist.name === result.playlist.name);
@@ -1024,7 +1471,7 @@ async function submitQueuePlaylistDialog(event) {
     } catch (error) {
       toast(error.message, "error");
     } finally {
-      button.textContent = "加入播放清單";
+      buttonLabel(button).textContent = "加入播放清單";
     }
   });
 }
@@ -1898,7 +2345,7 @@ function setupPlayerSheet() {
   const track = $("#bar-track");
   if (typeof bar?.addEventListener !== "function" || typeof track?.addEventListener !== "function") return;
   const syncTrackRole = () => {
-    if (isCompactLayout()) {
+    if (isCompactLayout() && uiVersion() !== "3") {
       track.setAttribute?.("aria-controls", "player-bar");
       track.setAttribute?.("aria-expanded", String(isPlayerOpen()));
     } else {
@@ -1907,12 +2354,12 @@ function setupPlayerSheet() {
     }
   };
   syncTrackRole();
-  // on a phone the bar opens the full player; on desktop it shows the now-playing stage
+  // on a 2.0 phone the bar opens the full player; on desktop, and on 3.0 phones where the player is home, it goes to the stage
   track.addEventListener("click", () => {
     // the click that ends a drag gesture is not a tap
     if (performance.now() - (state.sheetDragEnd || 0) < 350) return;
     if (isPlayerOpen()) return;
-    if (isCompactLayout()) setPlayerOpen(true);
+    if (isCompactLayout() && uiVersion() !== "3") setPlayerOpen(true);
     else switchPage("dashboard");
   });
   $("#player-collapse")?.addEventListener?.("click", () => setPlayerOpen(false));
@@ -1948,6 +2395,200 @@ function setupPlayerSheet() {
   });
 }
 
+// ---------- 3.0 phones: the player is home and the queue is a drawer pulled up from the bottom ----------
+function isQueueDrawerMode() {
+  return uiVersion() === "3" && isCompactLayout();
+}
+
+function isQueueOpen() {
+  const shell = $("#app-shell");
+  return Boolean(shell?.classList?.contains?.("is-queue-open") && !shell.classList.contains("is-queue-closing"));
+}
+
+// the open drawer covers the player, so everything behind it leaves the tab order
+const DRAWER_BACKGROUND = [".sidebar", ".main", ".player-bar"];
+
+// Sheet rules from Lumen Glass: one spring (320 / 24) carries the drawer between closed (only its heading peeks
+// above the tab bar) and open. While held it follows the finger, rubber-banded past either end; on release,
+// "position + speed x 0.12s" decides, with 30% of the travel as the line. The backdrop dims with how far it is open.
+const drawer = { y: null, closedY: 0, spring: null };
+
+function drawerClosedY() {
+  const panel = $("#queue-panel");
+  const shell = $("#app-shell");
+  if (!panel?.getBoundingClientRect || !shell) return 0;
+  const peek = parseFloat(getComputedStyle(shell).getPropertyValue("--peek-h")) || 64;
+  const navTop = $("#main-nav")?.getBoundingClientRect?.().top ?? window.innerHeight;
+  return Math.max(0, panel.offsetHeight - peek - Math.max(0, window.innerHeight - navTop));
+}
+
+function paintDrawer() {
+  const panel = $("#queue-panel");
+  const scrim = $("#queue-scrim");
+  if (!panel?.style) return;
+  if (drawer.y === null) {
+    panel.style.removeProperty("transform");
+    scrim?.style?.removeProperty?.("opacity");
+    return;
+  }
+  panel.style.transform = `translateY(${drawer.y.toFixed(2)}px)`;
+  if (scrim?.style) scrim.style.opacity = String(Math.max(0, Math.min(1, 1 - drawer.y / (drawer.closedY || 1))));
+}
+
+function drawerSpring() {
+  const L = lumen();
+  if (!L) return null;
+  if (!drawer.spring) drawer.spring = L.createSpring(value => { drawer.y = value; paintDrawer(); }, 0.5);
+  return drawer.spring;
+}
+
+function setQueueOpen(open, { fromHistory = false, velocity = 0 } = {}) {
+  const shell = $("#app-shell");
+  if (!shell?.classList || open === isQueueOpen()) return;
+  if (open && !isQueueDrawerMode()) return;
+  clearTimeout(state.drawerTimer);
+  DRAWER_BACKGROUND.forEach(selector => { const node = $(selector); if (node) node.inert = open; });
+  const panel = $("#queue-panel");
+  const grabber = $("#queue-grabber");
+  const scrim = $("#queue-scrim");
+  const spring = drawerSpring();
+  grabber?.setAttribute?.("aria-expanded", String(open));
+  grabber?.setAttribute?.("aria-label", open ? "收起播放佇列" : "打開播放佇列");
+  if (open) {
+    panel?.setAttribute?.("role", "dialog");
+    panel?.setAttribute?.("aria-modal", "true");
+    if (scrim) scrim.hidden = false;
+    shell.classList.remove("is-queue-closing");
+    shell.classList.add("is-queue-open");
+    if (!fromHistory) globalThis.history?.pushState?.({ queueDrawer: true }, "");
+    grabber?.focus?.({ preventScroll: true });
+    if (spring) {
+      drawer.closedY = drawerClosedY();
+      spring.jump(drawer.y ?? drawer.closedY);
+      spring.to(0, null, velocity);
+    }
+    return;
+  }
+  ["role", "aria-modal"].forEach(name => panel?.removeAttribute?.(name));
+  const finish = () => {
+    shell.classList.remove("is-queue-open", "is-queue-closing");
+    panel?.style?.removeProperty?.("--drawer-drag");
+    if (scrim) scrim.hidden = true;
+    if (spring) { drawer.y = null; paintDrawer(); }
+  };
+  if (!fromHistory && globalThis.history?.state?.queueDrawer) globalThis.history.back();
+  if (spring) {
+    shell.classList.add("is-queue-closing");
+    drawer.closedY = drawerClosedY();
+    spring.jump(drawer.y ?? 0);
+    spring.to(drawer.closedY, finish, velocity);
+    return;
+  }
+  if (prefersReducedMotion()) { finish(); return; }
+  shell.classList.add("is-queue-closing");
+  state.drawerTimer = setTimeout(finish, 250);
+}
+
+function setupQueueDrawer() {
+  const panel = $("#queue-panel");
+  const grabber = $("#queue-grabber");
+  if (typeof panel?.addEventListener !== "function" || typeof grabber?.addEventListener !== "function") return;
+  grabber.addEventListener("click", () => {
+    if (performance.now() - (state.drawerDragEnd || 0) < 350) return;
+    setQueueOpen(!isQueueOpen());
+  });
+  $("#queue-scrim")?.addEventListener?.("click", () => setQueueOpen(false));
+  // while closed only the heading peeks above the tab bar; tapping it opens the drawer
+  panel.addEventListener("click", event => {
+    if (!isQueueDrawerMode() || isQueueOpen()) return;
+    if (performance.now() - (state.drawerDragEnd || 0) < 350) return;
+    if (event.target?.closest?.(".panel-heading") && !event.target.closest("button")) setQueueOpen(true);
+  });
+  // drag the drawer by its grabber or heading: down to close it, or up from the peek to open it
+  let drag = null;
+  panel.addEventListener("pointerdown", event => {
+    if (!isQueueDrawerMode() || event.button > 0) return;
+    if (!event.target?.closest?.(".queue-grabber, .panel-heading") || event.target.closest(".queue-clear")) return;
+    const open = isQueueOpen();
+    const spring = drawerSpring();
+    if (!spring && !open) return;
+    if (spring) {
+      spring.stop();
+      drawer.closedY = drawerClosedY();
+      if (drawer.y === null) drawer.y = open ? 0 : drawer.closedY;
+      if (!open) {
+        $("#app-shell")?.classList?.add?.("is-queue-peeking");
+        const scrim = $("#queue-scrim");
+        if (scrim) scrim.hidden = false;
+      }
+    }
+    drag = { id: event.pointerId, startY: event.clientY, origin: drawer.y ?? 0, dy: 0, v: 0, t: event.timeStamp, last: event.clientY, open };
+    panel.setPointerCapture?.(event.pointerId);
+    panel.classList.add("is-dragging");
+  });
+  panel.addEventListener("pointermove", event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dt = Math.max(1, event.timeStamp - drag.t);
+    drag.v = drag.v + ((event.clientY - drag.last) / dt * 1000 - drag.v) * .5;
+    drag.last = event.clientY;
+    drag.t = event.timeStamp;
+    drag.dy = event.clientY - drag.startY;
+    if (drawer.spring) {
+      // past either end the drawer resists at 0.3x, the Lumen rubber band
+      let y = drag.origin + drag.dy;
+      if (y < 0) y *= .3;
+      else if (y > drawer.closedY) y = drawer.closedY + (y - drawer.closedY) * .3;
+      drawer.y = y;
+      paintDrawer();
+      return;
+    }
+    panel.style.setProperty("--drawer-drag", `${Math.max(0, drag.dy)}px`);
+  });
+  const release = event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const { dy, open } = drag;
+    const v = event.timeStamp - drag.t > 80 ? 0 : drag.v;
+    drag = null;
+    panel.classList.remove("is-dragging");
+    $("#app-shell")?.classList?.remove?.("is-queue-peeking");
+    state.drawerDragEnd = Math.abs(dy) > 6 ? performance.now() : 0;
+    const spring = drawer.spring;
+    if (spring) {
+      if (Math.abs(dy) <= 6) {
+        // a tap: the click handlers decide
+        if (!open) { drawer.y = null; paintDrawer(); const scrim = $("#queue-scrim"); if (scrim) scrim.hidden = true; }
+        return;
+      }
+      const projected = drawer.y + v * .12;
+      const line = drawer.closedY * (open ? .3 : .7);
+      if (open) {
+        if (projected > line) setQueueOpen(false, { velocity: v });
+        else { spring.jump(drawer.y); spring.to(0, null, v); }
+      } else if (projected < line) {
+        setQueueOpen(true, { velocity: v });
+      } else {
+        spring.jump(drawer.y);
+        spring.to(drawer.closedY, () => {
+          drawer.y = null;
+          paintDrawer();
+          const scrim = $("#queue-scrim");
+          if (scrim && !isQueueOpen()) scrim.hidden = true;
+        }, v);
+      }
+      return;
+    }
+    if (dy > 110) { setQueueOpen(false); return; }
+    panel.style.removeProperty("--drawer-drag");
+  };
+  panel.addEventListener("pointerup", release);
+  panel.addEventListener("pointercancel", release);
+  window.addEventListener?.("popstate", () => { if (isQueueOpen()) setQueueOpen(false, { fromHistory: true }); });
+  window.matchMedia?.(COMPACT_QUERY)?.addEventListener?.("change", event => {
+    if (!event.matches && isQueueOpen()) setQueueOpen(false);
+    if (!event.matches) { drawer.spring?.stop?.(); drawer.y = null; paintDrawer(); }
+  });
+}
+
 function isTypingTarget(target) {
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
 }
@@ -1957,6 +2598,7 @@ function handleShortcut(event) {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
   if ($("#queue-playlist-dialog")?.open) return;
   if (event.key === "Escape" && isPlayerOpen()) { setPlayerOpen(false); return; }
+  if (event.key === "Escape" && isQueueOpen()) { setQueueOpen(false); return; }
   const target = event.target;
   if (isTypingTarget(target)) return;
   if (event.key === "/") {
@@ -2043,6 +2685,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupQueueDragScroll();
   setupPanelResizers();
   setupPlayerSheet();
+  setupQueueDrawer();
+  setupUiVersion();
   document.addEventListener("keydown", handleShortcut);
   window.addEventListener?.("resize", () => requestAnimationFrame(updateTrackTitleOverflow));
   requestAnimationFrame(updateTrackTitleOverflow);

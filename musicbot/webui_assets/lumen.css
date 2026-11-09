@@ -1,0 +1,652 @@
+/* Lumen Glass component styles, copied from the Lumen Glass design system (components/bundle.css).
+   Loaded only for the 3.0 interface; the fonts are self-hosted by styles-v3.css, so the Google Fonts import is dropped. */
+/* Lumen Glass — component styles. Colours come from tokens.css; nothing here hard-codes a theme colour
+   except white highlights inside the glass recipe. */
+
+/* 光源方向：夜晚光從左下（200°），白天光從右上（20°）。角度以正上方為 0°、順時針。 */
+/* --lg-hot-rest：光劍白熱芯的顏色。夜是純白；晝在淺底上純白會消失，改用淡金。 */
+:root, [data-theme="dark"] { --lg-angle-rest: 200deg; --lg-sheen-rest: .14; --lg-halo-rest: 1; --lg-hot-rest: #ffffff; }
+/* 淺底上的琥珀光對比低，晝主題的環境光要更濃才看得出來 */
+[data-theme="light"] { --lg-angle-rest: 20deg; --lg-sheen-rest: .5; --lg-halo-rest: 1.9; --lg-hot-rest: #fff1b8; }
+
+body { margin: 0; background: var(--surface); color: var(--ink); font-family: var(--font-sans); }
+
+/* ---------- 玻璃配方（共用） ----------
+   層次由下而上：lg-glow-wide → lg-glow → lg-face（本體 + 鏡面反光 + 內部彩光） → lg-rim-outer → lg-rim-inner → 內容
+   元件內部可用 --lg-* 覆寫（ThemeToggle 會依進度即時寫入），沒寫就回到 token。 */
+.lg-glass {
+  --_r: var(--radius-lg);
+  --_a: var(--lg-angle, var(--lg-angle-rest, 200deg));
+  --_rim: var(--lg-rim, var(--rim));
+  --_core: var(--lg-rim-core, var(--rim-core));
+  --_top: var(--lg-glass-top, var(--glass-top));
+  --_bot: var(--lg-glass-bottom, var(--glass-bottom));
+  --_tint: var(--lg-glass-tint, var(--glass-tint));
+  --_bevel: var(--lg-glass-bevel, var(--glass-bevel));
+  --_sheen: var(--lg-sheen, var(--lg-sheen-rest, .14));
+  --_hot: var(--lg-hot, var(--lg-hot-rest, #fff));
+  position: relative;
+  border-radius: var(--_r);
+  isolation: isolate;
+}
+
+.lg-glow, .lg-rim {
+  --c1: var(--_rim);
+  --c2: var(--_core);
+  position: absolute;
+  pointer-events: none;
+  /* 頭尾逐步淡出，光不會在 0° / 180° 硬切 */
+  background: conic-gradient(from calc(var(--_a) - 90deg),
+    transparent 0deg,
+    color-mix(in srgb, var(--c1) 8%, transparent) 16deg,
+    color-mix(in srgb, var(--c1) 30%, transparent) 36deg,
+    color-mix(in srgb, var(--c1) 70%, transparent) 58deg,
+    var(--c1) 74deg,
+    var(--c2) 90deg,
+    var(--c1) 106deg,
+    color-mix(in srgb, var(--c1) 70%, transparent) 122deg,
+    color-mix(in srgb, var(--c1) 30%, transparent) 144deg,
+    color-mix(in srgb, var(--c1) 8%, transparent) 164deg,
+    transparent 180deg);
+}
+/* 光暈四層：貼近光邊的強光 → 中層擴散 → 大範圍柔光 → 徑向環境光。外面兩層往光源方向偏移，讓光溢到那一側。 */
+.lg-glow { z-index: 0; inset: -5px; border-radius: calc(var(--_r) + 5px); filter: blur(9px); opacity: var(--lg-glow-o, .55); }
+.lg-glow-mid {
+  inset: -16px; border-radius: calc(var(--_r) + 16px); filter: blur(26px);
+  transform: translate(calc(sin(var(--_a)) * 6px), calc(cos(var(--_a)) * -6px));
+  opacity: var(--lg-glow-mid-o, .85);
+}
+.lg-glow-wide {
+  inset: -36px; border-radius: calc(var(--_r) + 36px); filter: blur(60px);
+  transform: translate(calc(sin(var(--_a)) * 16px), calc(cos(var(--_a)) * -16px));
+  opacity: var(--lg-glow-wide-o, .7);
+}
+.lg-halo {
+  /* 中心最多偏 14%，漸層在半徑 0.6 × 58% ≈ 35% 處就淡到 0，不會碰到方框邊緣被切出直線 */
+  position: absolute; z-index: 0; inset: -140px; pointer-events: none;
+  --_k: var(--lg-halo, var(--lg-halo-rest, 1));
+  background: radial-gradient(58% 58% at calc(50% + sin(var(--_a)) * 14%) calc(50% - cos(var(--_a)) * 14%),
+    color-mix(in srgb, var(--_rim) calc(34% * var(--_k)), transparent) 0%,
+    color-mix(in srgb, var(--_rim) calc(16% * var(--_k)), transparent) 22%,
+    color-mix(in srgb, var(--_rim) calc(5% * var(--_k)), transparent) 42%,
+    transparent 60%);
+  opacity: var(--lg-halo-o, .8);
+}
+
+.lg-face {
+  position: absolute; inset: 0; z-index: 1;
+  border-radius: inherit; overflow: hidden;
+  background: linear-gradient(180deg, var(--_top), var(--_bot));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 8px)) saturate(140%);
+          backdrop-filter: blur(var(--glass-blur, 8px)) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 var(--_bevel),
+    inset 0 0 0 1px rgba(255, 255, 255, .07),
+    inset 0 -8px 12px -8px rgba(0, 0, 0, .35);
+}
+/* 鏡面反光：上半部一層淡白 + 一道斜向亮帶 */
+.lg-face::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, var(--_sheen)) 0%, rgba(255, 255, 255, 0) 46%),
+    linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, calc(var(--_sheen) * .5)) 42%, transparent 54%);
+}
+/* 光源照進玻璃的彩色反光，跟著光邊方向 */
+.lg-face::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(120% 90% at
+    calc(50% + sin(var(--_a)) * 55%) calc(50% - cos(var(--_a)) * 55%),
+    var(--_tint), transparent 60%);
+}
+
+/* ---------- Liquid Glass：邊緣折射 ----------
+   透鏡層比玻璃大 24px、再裁回玻璃形狀，邊緣才能把玻璃外面的光暈、軌道邊、內容彎進來。
+   JS（attachLens）只在 Chromium 系瀏覽器開啟並加上 .lg-lens-on；其他瀏覽器維持毛玻璃。 */
+.lg-lens {
+  display: none; position: absolute; z-index: 1; pointer-events: none;
+  inset: -24px; border-radius: calc(var(--_r) + 24px);
+  clip-path: inset(24px round var(--_r));
+}
+.lg-lens-on > .lg-lens { display: block; }
+/* 有折射時玻璃更清透：不再整片模糊，本體色調也淡一點，讓邊緣的折射看得到 */
+.lg-lens-on > .lg-face {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--_top) 50%, transparent),
+    color-mix(in srgb, var(--_bot) 60%, transparent));
+}
+
+/* ---------- Liquid Glass：指尖光 ---------- */
+.lg-glass { --_touch: color-mix(in srgb, var(--_core) 55%, #fff); }
+.lg-touch {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 0;
+  border-radius: 50%; pointer-events: none; opacity: 0;
+  transform: translate(-50%, -50%) scale(.15);
+  background: radial-gradient(circle closest-side,
+    color-mix(in srgb, var(--_touch) 70%, transparent) 0%,
+    color-mix(in srgb, var(--_touch) 30%, transparent) 45%,
+    transparent 100%);
+}
+/* 光擴散到邊緣：按著的時候光邊亮起來 */
+.lg-glass .lg-saber, .lg-glass .lg-rim-outer { transition: opacity .25s ease-out; }
+.lg-glass.is-touched .lg-saber-bloom, .lg-glass.is-touched .lg-rim-outer { opacity: 1; }
+.lg-glass.is-touched .lg-saber-haze { opacity: .8; }
+
+.lg-rim {
+  z-index: 2;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+/* 外圈光邊＝光劍：白熱的芯（lg-rim-outer）＋ 貼身飽和光（lg-saber-bloom）＋ 外圍光霧（lg-saber-haze）。
+   CSS 先套 filter 再套 mask，所以模糊放在外層 .lg-saber，遮罩成環的是裡面的 .lg-ring。 */
+.lg-rim-outer {
+  inset: -4px; padding: 2px; border-radius: calc(var(--_r) + 4px);
+  /* 整條等亮：約 104°（一條邊加兩個轉角）都是白熱芯，只有兩端各 8° 收尾 */
+  background: conic-gradient(from calc(var(--_a) - 90deg) at var(--_at, 50% 50%),
+    transparent 30deg,
+    var(--_rim) 35deg,
+    var(--_hot) 40deg,
+    var(--_hot) 140deg,
+    var(--_rim) 145deg,
+    transparent 150deg);
+}
+.lg-saber { position: absolute; z-index: 2; pointer-events: none; }
+.lg-saber-bloom { inset: -6px; border-radius: calc(var(--_r) + 6px); filter: blur(3px) saturate(1.8) brightness(1.15); opacity: var(--lg-bloom-o, 1); }
+.lg-saber-haze  { inset: -11px; border-radius: calc(var(--_r) + 11px); filter: blur(12px) saturate(1.6); opacity: var(--lg-haze-o, 1); }
+.lg-ring {
+  position: absolute; inset: 0; border-radius: inherit;
+  /* 和白熱芯同一段弧、同樣等亮，只是更寬、更模糊 */
+  background: conic-gradient(from calc(var(--_a) - 90deg) at var(--_at, 50% 50%),
+    transparent 30deg,
+    var(--_rim) 38deg,
+    var(--_rim) 142deg,
+    transparent 150deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.lg-saber-bloom .lg-ring { padding: 5px; }
+.lg-saber-haze .lg-ring { padding: 12px; }
+/* 內圈：玻璃厚度的邊緣接到光的那條亮線 */
+.lg-rim-inner {
+  --c1: color-mix(in srgb, var(--_core) 70%, #fff);
+  --c2: #fff;
+  inset: 1px; padding: 1.5px; border-radius: calc(var(--_r) - 1px); opacity: .9;
+}
+
+/* ---------- 靜態玻璃：整圈等亮 ----------
+   不會移動的玻璃（GlassButton、GlassCard、GlassSlider 的珠子、TextField）不在角落放一段光條：
+   光邊整圈一樣亮，平時不亮，滑過、按下、聚焦或 lit 時整圈亮起。會被拖著走的（ThemeToggle、Switch、
+   SegmentedControl）才有繞著跑的那段光。 */
+.lg-even > .lg-rim-outer { background: var(--_hot); }
+.lg-even > .lg-saber > .lg-ring { background: var(--_rim); }
+.lg-even > .lg-glow { background: color-mix(in srgb, var(--_rim) 75%, transparent); }
+.lg-even > .lg-glow-mid, .lg-even > .lg-glow-wide { transform: none; }
+/* 內圈亮線：整圈都有，頂部最亮（鏡面反光），底部收淡 */
+.lg-even > .lg-rim-inner {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--_bevel) 90%, transparent),
+    color-mix(in srgb, var(--_bevel) 25%, transparent) 55%,
+    color-mix(in srgb, var(--_bevel) 45%, transparent));
+  opacity: 1;
+}
+
+/* ---------- ThemeToggle ---------- */
+.lg-toggle {
+  --w: 200px; --h: 104px; --pad: 8px; --k: 88px;
+  --tr: var(--radius-xl); --kr: var(--radius-lg);
+  position: relative; display: inline-block; vertical-align: middle;
+  width: var(--w); height: var(--h);
+  border: 0; padding: 0; margin: 0;
+  border-radius: var(--tr);
+  background: var(--surface-sunken);
+  cursor: grab;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.lg-toggle-sm { --w: 120px; --h: 62px; --pad: 5px; --k: 52px; --tr: 18px; --kr: 14px; }
+.lg-toggle.is-dragging { cursor: grabbing; }
+.lg-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.lg-toggle:disabled { cursor: not-allowed; opacity: .5; }
+.lg-toggle-well { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+.lg-toggle-knob { position: absolute; top: var(--pad); left: var(--pad); width: var(--k); height: var(--k); will-change: transform; }
+.lg-toggle-inner { --_r: var(--kr); position: absolute; inset: 0; will-change: transform; }
+.lg-toggle-drop { position: absolute; inset: 0; z-index: 0; border-radius: inherit; pointer-events: none; }
+.lg-toggle-icon {
+  position: absolute; left: 50%; top: 50%;
+  width: calc(var(--k) * .727); height: calc(var(--k) * .727);
+  transform: translate(-50%, -50%); pointer-events: none;
+}
+
+/* ---------- GlassButton ---------- */
+.lg-btn {
+  --_r: var(--radius-md);
+  appearance: none; border: 0; background: none; margin: 0;
+  height: 44px; padding: 0 var(--space-5);
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 500 15px/22px var(--font-sans);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform var(--duration-press, 120ms) var(--easing-fade, ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.lg-btn-sm { --_r: var(--radius-sm); height: 36px; padding: 0 var(--space-4); font-size: 13px; line-height: 18px; }
+.lg-btn > .lg-glow-wide, .lg-btn > .lg-halo { display: none; }
+.lg-btn > .lg-glow, .lg-btn > .lg-rim-outer, .lg-btn > .lg-saber { transition: opacity var(--duration-rim-fade, 200ms) var(--easing-fade, ease-out); }
+.lg-btn-glass > .lg-glow, .lg-btn-glass > .lg-saber { opacity: 0; }
+.lg-btn-glass > .lg-rim-outer { opacity: 0; }
+.lg-btn-lit > .lg-glow { opacity: .4; }
+.lg-btn-lit > .lg-glow-mid { opacity: .3; }
+.lg-btn-lit > .lg-rim-outer { opacity: .85; }
+.lg-btn-lit > .lg-saber-bloom { opacity: .7; }
+.lg-btn-lit > .lg-saber-haze { opacity: .45; }
+@media (hover: hover) {
+  .lg-btn-glass:hover > .lg-rim-outer { opacity: .7; }
+  .lg-btn-glass:hover > .lg-saber-bloom { opacity: .5; }
+  .lg-btn-glass:hover > .lg-glow { opacity: .25; }
+  .lg-btn-glass:hover > .lg-glow-mid { opacity: .12; }
+}
+.lg-btn:active { transform: scale(.97); }
+.lg-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.lg-btn:disabled { cursor: not-allowed; opacity: .45; transform: none; }
+.lg-btn:disabled > .lg-rim, .lg-btn:disabled > .lg-glow, .lg-btn:disabled > .lg-saber { display: none; }
+.lg-btn-label { position: relative; z-index: 3; display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* ---------- GlassCard ---------- */
+.lg-card { --_r: var(--radius-lg); display: block; color: var(--ink); }
+.lg-card > .lg-glow-wide, .lg-card > .lg-halo { display: none; }
+.lg-card > .lg-glow { opacity: 0; }
+.lg-card-lit > .lg-glow { opacity: .35; }
+.lg-card-lit > .lg-glow-mid { opacity: .3; }
+.lg-card > .lg-rim-outer { opacity: 0; }
+.lg-card > .lg-saber-bloom { opacity: 0; }
+.lg-card > .lg-saber-haze { opacity: 0; }
+.lg-card-lit > .lg-rim-outer { opacity: .75; }
+.lg-card-lit > .lg-saber-bloom { opacity: .6; }
+.lg-card-lit > .lg-saber-haze { opacity: .4; }
+.lg-card-body { position: relative; z-index: 3; padding: var(--space-5); }
+
+/* ---------- 玻璃珠子（Switch、GlassSlider、SegmentedControl 的滑塊） ----------
+   --_on：光有多亮（0～1）。Switch 跟著進度從暗到亮；其他元件固定一半。
+   --lift：按著時由 JS 從 0 推到 1，珠子浮起來、變得更透明，折射看得更清楚。 */
+.lg-bead {
+  --_r: 999px; --_on: .5;
+  --_fa: calc(1 - var(--lift, 0) * .55);
+  position: absolute; inset: 0; will-change: transform;
+}
+.lg-bead.lg-lens-on { --_fa: calc(.55 - var(--lift, 0) * .4); }
+.lg-bead > .lg-face {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--_top) calc(var(--_fa) * 100%), transparent),
+    color-mix(in srgb, var(--_bot) calc(var(--_fa) * 100%), transparent));
+}
+.lg-bead::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: var(--shadow-glass);
+  opacity: calc(.7 - var(--lift, 0) * .3);
+}
+.lg-bead > .lg-halo, .lg-bead > .lg-glow-wide { display: none; }
+.lg-bead > .lg-glow { opacity: calc(var(--_on) * .5); }
+.lg-bead > .lg-glow-mid { opacity: calc(var(--_on) * .3); }
+.lg-bead > .lg-rim-outer { opacity: calc(.35 + var(--_on) * .65); }
+.lg-bead > .lg-saber-bloom { opacity: calc(var(--_on) * .7); }
+.lg-bead > .lg-saber-haze { opacity: 0; }
+
+/* ---------- Switch ---------- */
+.lg-switch {
+  --w: 64px; --h: 32px; --pad: 3px; --tw: 38px; --p: 0;
+  position: relative; display: inline-block; vertical-align: middle; flex: none;
+  width: var(--w); height: var(--h);
+  border: 0; padding: 0; margin: 0;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow-well);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.lg-switch-sm { --w: 50px; --h: 26px; --tw: 29px; }
+.lg-switch.is-dragging { cursor: grabbing; }
+.lg-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.lg-switch:disabled { cursor: not-allowed; opacity: .45; }
+/* 打開時軌道被光填滿：亮度直接等於進度，拖到一半就半亮 */
+.lg-switch-fill {
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rim-core) 45%, var(--rim)), var(--rim));
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .25), 0 0 14px color-mix(in srgb, var(--rim) 55%, transparent);
+  opacity: var(--p);
+}
+.lg-switch-thumb {
+  position: absolute; top: var(--pad); left: var(--pad);
+  width: var(--tw); height: calc(var(--h) - 2 * var(--pad));
+  will-change: transform;
+}
+.lg-switch .lg-bead { --_on: var(--p); }
+.lg-switch-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  font: 400 15px/22px var(--font-sans); color: var(--ink);
+}
+.lg-switch-text { cursor: pointer; user-select: none; -webkit-user-select: none; }
+.lg-switch-row.is-disabled .lg-switch-text { cursor: not-allowed; opacity: .45; }
+
+/* ---------- GlassSlider ---------- */
+.lg-slider {
+  --tw: 40px; --th: 26px; --track: 6px;
+  position: relative; height: 44px; min-width: 120px;
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+.lg-slider.is-dragging { cursor: grabbing; }
+.lg-slider.is-disabled { cursor: not-allowed; opacity: .45; }
+.lg-slider-track {
+  position: absolute; left: 0; right: 0; top: 50%; height: var(--track); margin-top: calc(var(--track) / -2);
+  border-radius: 999px; background: var(--surface-sunken); box-shadow: var(--shadow-well);
+}
+/* 已填的部分＝一小段光劍：rim 色的光條、中間一條白熱芯，整段等亮 */
+.lg-slider-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: inherit;
+  background: var(--rim);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--rim) 80%, transparent), 0 0 18px color-mix(in srgb, var(--rim) 45%, transparent);
+}
+.lg-slider-fill::after {
+  content: ""; position: absolute; left: 3px; right: 3px; top: 50%; height: 2px; margin-top: -1px;
+  border-radius: 2px; background: var(--lg-hot-rest, #fff);
+}
+.lg-slider-thumb {
+  position: absolute; left: 0; top: 50%;
+  width: var(--tw); height: var(--th); margin-top: calc(var(--th) / -2);
+  border-radius: 999px; outline: none; will-change: transform;
+}
+.lg-slider-thumb:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.lg-slider .lg-bead { --_on: 0; }
+.lg-slider .lg-bead:not(.is-touched) > .lg-rim-outer { opacity: 0; }
+.lg-slider .lg-glass.is-touched > .lg-glow { opacity: .3; }
+
+/* ---------- SegmentedControl ---------- */
+.lg-seg {
+  --h: 44px; --pad: 4px; --_sr: var(--radius-sm);
+  position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  height: var(--h); padding: var(--pad); box-sizing: border-box;
+  border-radius: calc(var(--_sr) + var(--pad));
+  background: var(--surface-sunken); box-shadow: var(--shadow-well);
+  touch-action: none;
+  user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.lg-seg-sm { --h: 36px; --pad: 3px; --_sr: 10px; }
+.lg-seg.is-dragging { cursor: grabbing; }
+.lg-seg.is-disabled { opacity: .45; }
+.lg-seg-opt, .lg-seg-overlay > span {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1);
+  min-width: 0; padding: 0 var(--space-3);
+  font: 500 13px/18px var(--font-sans); letter-spacing: .02em; white-space: nowrap;
+}
+.lg-seg-opt {
+  appearance: none; border: 0; margin: 0; background: none;
+  position: relative; z-index: 0;
+  border-radius: var(--_sr);
+  color: var(--ink-muted); --lg-px-on: var(--ink-muted);
+  cursor: pointer;
+}
+.lg-seg-opt:disabled { cursor: not-allowed; }
+.lg-seg-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* 玻璃在底排文字之上（邊緣會折射它們）、在亮字之下 */
+.lg-seg-pill {
+  position: absolute; left: var(--pad); top: var(--pad); bottom: var(--pad); width: 0;
+  z-index: 1; pointer-events: none; will-change: transform;
+}
+.lg-seg-pill > .lg-bead { --_r: var(--_sr); }
+.lg-seg-overlay {
+  position: absolute; inset: 0; z-index: 2; padding: var(--pad);
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  pointer-events: none;
+  color: var(--ink); --lg-px-on: var(--ink);
+}
+
+/* 直式（orientation="vertical"）：選項由上往下排，玻璃上下滑動、上下拉長。
+   光不在玻璃的邊框上，而是選中那一格左邊的一條光條（.lg-seg-bar），像這樣：| [選項]。
+   玻璃本身安靜：只留內緣亮線，外圈光邊和光暈都收起來，按住時才亮。
+   每一格的高度 = 橫式的高度扣掉內距；文字靠左，前面放圖示。 */
+.lg-seg-vertical {
+  grid-auto-flow: row; grid-auto-columns: auto; grid-auto-rows: calc(var(--h) - 2 * var(--pad));
+  height: auto;
+}
+.lg-seg-vertical .lg-seg-opt, .lg-seg-vertical .lg-seg-overlay > span { justify-content: flex-start; gap: var(--space-3); padding: 0 var(--space-4); }
+.lg-seg-vertical .lg-seg-pill { right: var(--pad); bottom: auto; width: auto; height: 0; }
+.lg-seg-vertical .lg-seg-overlay { grid-auto-flow: row; grid-auto-columns: auto; grid-auto-rows: calc(var(--h) - 2 * var(--pad)); }
+.lg-seg-vertical .lg-bead:not(.is-touched) > :is(.lg-rim-outer, .lg-saber-bloom, .lg-saber-haze, .lg-glow, .lg-glow-mid) { opacity: 0; }
+
+/* 光條：一小段直立的光劍，rim 色的光、中間一條白熱芯、外面一圈柔光，整段等亮。
+   它用光條自己的彈簧（110 / 13）追著玻璃，所以慢半拍、甩過頭一點再停；移動越快拉得越長（最多 1.9 倍）。
+   位置與長度由 JS 寫入：transform 是光條中心的 y，--lg-bar-h 是長度。 */
+.lg-seg-bar {
+  position: absolute; z-index: 3; top: 0; left: 0; pointer-events: none;
+  width: 3px; height: var(--lg-bar-h, 22px); margin: calc(var(--lg-bar-h, 22px) / -2) 0 0 var(--lg-bar-x, -10px);
+  border-radius: 3px; will-change: transform, height;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rim-core) 40%, var(--rim)), var(--rim));
+  box-shadow:
+    0 0 4px color-mix(in srgb, var(--rim) 90%, transparent),
+    0 0 12px color-mix(in srgb, var(--rim) 55%, transparent),
+    0 0 24px color-mix(in srgb, var(--rim) 25%, transparent);
+}
+.lg-seg-bar::after {
+  content: ""; position: absolute; left: 1px; top: 3px; bottom: 3px; width: 1px; border-radius: 1px;
+  background: var(--lg-hot-rest, #fff);
+}
+.lg-seg-bar[hidden] { display: none; }
+
+/* ---------- TextField ---------- */
+@property --lg-draw { syntax: "<angle>"; inherits: true; initial-value: 0deg; }
+.lg-field { display: grid; gap: var(--space-2); min-width: 0; }
+.lg-field-label { font: 500 13px/18px var(--font-sans); letter-spacing: .02em; color: var(--ink-muted); }
+.lg-field-box {
+  --_r: var(--radius-sm);
+  --lg-draw: 0deg;
+  display: flex; align-items: center; gap: var(--space-2);
+  height: 44px; padding: 0 var(--space-4); box-sizing: border-box;
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow-well);
+  /* 失焦：先淡出，0.3 秒後才把光收回去，所以看不到它倒退 */
+  transition: --lg-draw 0s linear var(--duration-field-fade, 300ms), box-shadow .2s ease-out;
+  cursor: text;
+}
+/* 聚焦時光從光源那一角出發，逆時針畫滿一整圈，然後整圈等亮 */
+.lg-field-box .lg-rim-outer {
+  background: conic-gradient(from var(--lg-angle-rest, 200deg),
+    transparent 0 calc(345deg - var(--lg-draw)), var(--_hot) calc(360deg - var(--lg-draw)) 360deg);
+}
+.lg-field-box .lg-ring {
+  background: conic-gradient(from var(--lg-angle-rest, 200deg),
+    transparent 0 calc(345deg - var(--lg-draw)), var(--_rim) calc(360deg - var(--lg-draw)) 360deg);
+}
+.lg-field-box .lg-rim-outer, .lg-field-box .lg-saber-bloom { opacity: 0; }
+.lg-field-box:focus-within {
+  --lg-draw: 360deg;
+  transition: --lg-draw var(--duration-field-draw, 700ms) var(--easing-field-draw, cubic-bezier(.3, .7, .2, 1)), box-shadow .2s ease-out;
+  /* 琥珀光邊在淺底上對比不夠，另外加一圈 focus 色細線當焦點指示 */
+  box-shadow: var(--shadow-well), inset 0 0 0 1px var(--focus);
+}
+.lg-field-box:focus-within .lg-rim-outer { opacity: .85; }
+.lg-field-box:focus-within .lg-saber-bloom { opacity: .6; }
+.lg-field.is-invalid .lg-field-box {
+  --lg-draw: 360deg;
+  --lg-rim: var(--danger, #e5484d);
+  --lg-rim-core: var(--danger, #e5484d);
+  --lg-hot: color-mix(in srgb, var(--danger, #e5484d) 35%, #fff);
+  box-shadow: var(--shadow-well), inset 0 0 0 1px var(--danger, #e5484d);
+}
+.lg-field.is-invalid .lg-rim-outer { opacity: .7; }
+.lg-field.is-invalid .lg-saber-bloom { opacity: .4; }
+.lg-field-input {
+  position: relative; z-index: 3; flex: 1; min-width: 0; height: 100%;
+  border: 0; outline: 0; background: none; padding: 0; margin: 0;
+  font: 400 15px/22px var(--font-sans); color: var(--ink);
+  caret-color: var(--focus);
+}
+.lg-field-input::placeholder { color: var(--ink-muted); opacity: 1; }
+.lg-field-input:disabled { cursor: not-allowed; }
+.lg-field-icon { position: relative; z-index: 3; --lg-px-on: var(--ink-muted); }
+.lg-field-msg { margin: 0; font: 400 12px/16px var(--font-sans); color: var(--ink-muted); }
+.lg-field.is-invalid .lg-field-msg { color: var(--danger, #e5484d); }
+.lg-field.is-disabled { opacity: .45; }
+
+/* ---------- 浮動層（TabBar、Sheet、Popover、Toast、Tooltip） ----------
+   浮在內容上的玻璃：不加外圍光暈和外圈光邊（它們不是「常亮」的東西），只留內緣亮線。
+   玻璃色調比按鈕濃，字才讀得清楚；大面板（Sheet、Popover）另外加背景模糊。 */
+.lg-float > .lg-halo, .lg-float > .lg-glow-wide { display: none; }
+.lg-float > .lg-glow, .lg-float > .lg-saber-haze, .lg-float > .lg-saber-bloom, .lg-float > .lg-rim-outer { opacity: 0; }
+.lg-float.lg-glass.is-touched > .lg-rim-outer, .lg-float.lg-glass.is-touched > .lg-saber-bloom { opacity: 0; }
+.lg-float::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: var(--shadow-glass), 0 24px 48px -16px rgba(0, 0, 0, .35);
+}
+.lg-float.lg-lens-on > .lg-face {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--_top) 78%, transparent),
+    color-mix(in srgb, var(--_bot) 86%, transparent));
+}
+.lg-sheet > .lg-face, .lg-popover > .lg-face {
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+          backdrop-filter: blur(20px) saturate(160%);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--_top) 82%, transparent),
+    color-mix(in srgb, var(--_bot) 90%, transparent));
+}
+
+/* ---------- TabBar ---------- */
+.lg-tabbar {
+  position: fixed; left: 50%; bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  z-index: 900; transform: translateX(-50%);
+  width: max-content; max-width: calc(100vw - 2 * var(--space-4));
+}
+.lg-tabbar-static { position: relative; left: auto; bottom: auto; transform: none; margin: 0 auto; }
+.lg-tabbar-glass {
+  --_r: 28px;
+  transform-origin: 50% 100%;
+  transition: transform .38s cubic-bezier(.3, 1.3, .5, 1);
+}
+.lg-tabbar.is-compact .lg-tabbar-glass { transform: scale(.86) translateY(4px); }
+.lg-tabbar-track {
+  position: relative; z-index: 3; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(64px, 1fr);
+  padding: 5px; height: 62px; box-sizing: border-box;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.lg-tabbar-track.is-dragging { cursor: grabbing; }
+.lg-tab {
+  appearance: none; border: 0; margin: 0; background: none; cursor: pointer;
+  position: relative; z-index: 0; min-width: 0; padding: 0 var(--space-3);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border-radius: 23px;
+  font: 500 11px/14px var(--font-sans); letter-spacing: .02em; white-space: nowrap;
+  color: var(--ink-muted); --lg-px-on: var(--ink-muted);
+}
+.lg-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.lg-tab-label { transition: opacity .2s ease-out; }
+.lg-tabbar.is-compact .lg-tab-label { opacity: 0; }
+.lg-tab-pill { --_sr: 23px; left: 5px; top: 5px; bottom: 5px; }
+.lg-tabbar-overlay {
+  position: absolute; inset: 0; z-index: 2; padding: 5px;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(64px, 1fr);
+  pointer-events: none; color: var(--ink); --lg-px-on: var(--ink);
+}
+.lg-tabbar-overlay > .lg-tab { cursor: default; color: var(--accent-ink); --lg-px-on: var(--accent-ink); }
+
+/* ---------- Sheet ---------- */
+.lg-sheet-layer {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: var(--space-3); box-sizing: border-box; pointer-events: none;
+}
+.lg-sheet-backdrop {
+  position: absolute; inset: 0; pointer-events: auto; opacity: 0;
+  background: color-mix(in srgb, var(--surface-sunken) 55%, transparent);
+}
+.lg-sheet {
+  --_r: var(--radius-xl);
+  position: relative; width: min(560px, 100%); max-height: calc(100% - var(--space-7));
+  display: flex; flex-direction: column;
+  pointer-events: auto; touch-action: none; outline: none; color: var(--ink);
+  transform-origin: 50% 50%; will-change: transform;
+}
+.lg-sheet-body {
+  position: relative; z-index: 3; min-height: 0; display: flex; flex-direction: column;
+  padding: var(--space-3) var(--space-5) var(--space-5);
+  opacity: var(--lg-sheet-content, 1);
+}
+.lg-sheet-handle {
+  flex: none; width: 36px; height: 5px; margin: 0 auto var(--space-4); border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 28%, transparent); cursor: grab;
+}
+.lg-sheet-title { margin: 0 0 var(--space-4); font: 600 18px/24px var(--font-sans); }
+/* 內距再用負邊距抵掉：裡面元件的光邊不會被捲動區切掉；底部 24px 是折射層多出來的範圍，不然會撐出捲軸 */
+.lg-sheet-scroll {
+  min-height: 0; overflow-x: hidden; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain;
+  padding: var(--space-2) var(--space-2) var(--space-5); margin: calc(var(--space-2) * -1) calc(var(--space-2) * -1) calc(var(--space-5) * -1);
+  scrollbar-width: thin;
+}
+
+/* ---------- Popover ---------- */
+.lg-popover {
+  --_r: var(--radius-md);
+  position: fixed; left: 0; top: 0; z-index: 1000; width: max-content; max-width: min(320px, calc(100vw - 24px));
+  opacity: 0; color: var(--ink); will-change: transform;
+}
+.lg-popover-body { position: relative; z-index: 3; padding: var(--space-4); opacity: var(--lg-sheet-content, 1); }
+
+/* ---------- Tooltip ---------- */
+.lg-tip-anchor { display: inline-flex; }
+.lg-tip {
+  --_r: 10px;
+  position: fixed; left: 0; top: 0; z-index: 1100; max-width: 240px; pointer-events: none;
+  opacity: 0; transform: scale(.82);
+  transition: opacity .16s ease-out, transform .26s cubic-bezier(.3, 1.4, .5, 1);
+}
+.lg-tip[data-side="top"] { transform: scale(.82) translateY(4px); }
+.lg-tip[data-side="bottom"] { transform: scale(.82) translateY(-4px); }
+.lg-tip.is-shown { opacity: 1; transform: none; }
+.lg-tip-body { position: relative; z-index: 3; display: block; padding: 6px 10px; font: 500 12px/16px var(--font-sans); color: var(--ink); }
+
+/* ---------- Toast ---------- */
+.lg-toast-host {
+  position: fixed; left: 50%; top: max(var(--space-3), env(safe-area-inset-top)); z-index: 1200;
+  width: min(420px, calc(100vw - 24px)); transform: translateX(-50%); pointer-events: none;
+}
+.lg-toast-slot {
+  position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: center;
+  transform-origin: 50% 0; transition: transform .35s cubic-bezier(.3, 1.2, .5, 1), opacity .25s ease-out;
+}
+.lg-toast { --_r: 999px; max-width: 100%; touch-action: none; will-change: transform; transform-origin: 50% 50%; }
+.lg-toast-body {
+  position: relative; z-index: 3; display: flex; align-items: center; gap: var(--space-2);
+  min-height: 44px; padding: 0 var(--space-2) 0 var(--space-4); box-sizing: border-box;
+  font: 500 14px/20px var(--font-sans); color: var(--ink);
+  opacity: var(--lg-sheet-content, 1);
+}
+.lg-toast-body:not(:has(.lg-toast-action)) { padding-right: var(--space-5); }
+.lg-toast-text { min-width: 0; }
+.lg-toast-action {
+  appearance: none; border: 0; margin: 0 0 0 var(--space-2); padding: 0 var(--space-3); height: 32px; border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--accent-ink);
+  font: 600 13px/18px var(--font-sans); cursor: pointer; white-space: nowrap;
+}
+.lg-toast-action:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- PixelIcon ---------- */
+.lg-pixel-icon { display: inline-block; vertical-align: middle; flex: none; }
+.lg-px-on { fill: var(--lg-px-on, var(--pixel-on)); }
+.lg-px-off { fill: var(--lg-px-off, var(--pixel-off)); }
+.lg-px-tw { animation: lg-twinkle var(--duration-twinkle, 2400ms) ease-in-out infinite; }
+@keyframes lg-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lg-glass .lg-saber, .lg-glass .lg-rim-outer { transition: none; }
+  .lg-px-tw { animation: none; }
+  .lg-btn, .lg-btn .lg-glow, .lg-btn .lg-rim-outer { transition: none; }
+  .lg-field-box, .lg-field-box:focus-within { transition: none; }
+  .lg-tip, .lg-tabbar-glass, .lg-tab-label, .lg-toast-slot { transition: none; }
+}

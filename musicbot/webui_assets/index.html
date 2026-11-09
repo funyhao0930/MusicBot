@@ -7,7 +7,37 @@
   <meta name="theme-color" content="#050506">
   <title>糖音機 控制中心</title>
   <link rel="preload" href="/assets/figtree-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/styles.css?v=21">
+  <link rel="stylesheet" href="/assets/styles.css?v=24">
+  <link rel="stylesheet" href="/assets/lumen.css?v=3" id="ui-lumen-stylesheet" media="not all">
+  <link rel="stylesheet" href="/assets/styles-v3.css?v=11" id="ui-v3-stylesheet" media="not all">
+  <script>
+    /* 2.0 / 3.0: each browser keeps its own choice; decided before the first paint so the other look never flashes */
+    (function () {
+      var root = document.documentElement, ui = "2", theme = "dark";
+      try {
+        ui = localStorage.getItem("musicbot.uiVersion") === "3" ? "3" : "2";
+        theme = localStorage.getItem("musicbot.uiTheme") === "light" ? "light" : "dark";
+      } catch (error) { /* storage blocked: 2.0 */ }
+      root.dataset.ui = ui;
+      if (ui === "3") {
+        root.dataset.theme = theme;
+        // just switched over from 2.0: keep the app hidden until the welcome animation takes over
+        try { if (sessionStorage.getItem("musicbot.uiWelcome") === "1") root.dataset.uiWelcome = "1"; } catch (error) { /* no welcome */ }
+        // a stylesheet parsed as media="not all" never holds back the first paint (or the scripts), so merely flipping
+        // its media would paint 2.0 for a moment while 3.0 loads; written by the parser, the 3.0 sheets block like any other
+        ["ui-lumen-stylesheet", "ui-v3-stylesheet"].forEach(function (id) {
+          var sheet = document.getElementById(id);
+          if (!sheet) return;
+          var href = sheet.getAttribute("href");
+          sheet.parentNode.removeChild(sheet);
+          document.write('<link rel="stylesheet" href="' + href + '" id="' + id + '">');
+        });
+      } else {
+        // just switched back from 3.0: 2.0 has a word with whoever did that before it shows itself
+        try { if (sessionStorage.getItem("musicbot.uiOldie") === "1") root.dataset.uiOldie = "1"; } catch (error) { /* no teasing */ }
+      }
+    })();
+  </script>
 </head>
 <body>
   <!-- Interface icons follow the Lucide set (ISC License); transport glyphs are drawn for this app. -->
@@ -23,26 +53,37 @@
 
       <nav class="nav-list" id="main-nav">
         <button class="nav-item is-active" data-page="dashboard" type="button" aria-current="page" title="控制台">
-          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg>
+          <svg class="i" data-px="home" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg>
           <span>控制台</span>
         </button>
         <button class="nav-item" data-page="playlists" type="button" title="播放清單">
-          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15V6"/><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/></svg>
+          <svg class="i" data-px="list" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15V6"/><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/></svg>
           <span>播放清單</span>
         </button>
         <button class="nav-item" data-page="settings" data-local-only type="button" title="設定">
-          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg>
+          <svg class="i" data-px="settings" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg>
           <span>設定</span>
         </button>
         <button class="nav-item" data-page="permissions" data-local-only type="button" title="權限">
-          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+          <svg class="i" data-px="lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
           <span>權限</span>
         </button>
         <button class="nav-item" data-page="logs" data-local-only type="button" title="日誌">
-          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+          <svg class="i" data-px="log" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
           <span>日誌</span>
         </button>
       </nav>
+
+      <div class="sidebar-prefs" id="sidebar-prefs">
+        <div class="ui-version" role="group" aria-label="介面版本">
+          <span class="ui-version-label">介面</span>
+          <span class="ui-version-options">
+            <button class="ui-version-option" type="button" data-ui-version="2" aria-pressed="true" title="使用 2.0 介面">2.0</button>
+            <button class="ui-version-option" type="button" data-ui-version="3" aria-pressed="false" title="使用 3.0 介面">3.0</button>
+          </span>
+        </div>
+        <input class="ui-theme-toggle" id="ui-theme-toggle" type="checkbox" role="switch" aria-label="晝主題" title="切換夜／晝">
+      </div>
 
       <div class="sidebar-footer">
         <img class="meme-mascot" src="/assets/meme-idle.webp" alt="" title="咕咕嘎嘎" width="48" height="48" loading="lazy" decoding="async">
@@ -62,9 +103,9 @@
         <h1 id="page-title">今晚播什麼？</h1>
         <div class="topbar-actions">
           <label class="server-select">
-            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Zm0 0a9 9 0 1 1 18 0m0 0v5a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z"/></svg>
+            <svg class="i" data-px="note" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Zm0 0a9 9 0 1 1 18 0m0 0v5a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z"/></svg>
             <select id="guild-select" aria-label="Discord 伺服器"></select>
-            <svg class="i select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            <svg class="i select-chevron" data-px="down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </label>
           <div class="connection-pill" id="connection-pill" role="status">
             <span class="status-dot"></span>
@@ -91,6 +132,7 @@
               <span class="np-state" id="np-state"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="np-state-text">正在播放</span></span>
               <span id="track-meta">加入一首歌，讓今晚有點聲音。</span>
             </p>
+            <p class="np-clock" aria-hidden="true"><span class="np-clock-now" id="np-clock">0:00</span><span class="np-clock-total" id="np-clock-total">/ 0:00</span></p>
           </div>
         </div>
       </section>
@@ -102,7 +144,7 @@
             <button class="button primary" type="submit">建立</button>
           </form>
           <button class="button secondary" id="new-playlist" type="button" aria-expanded="false" aria-controls="playlist-create-form">
-            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>新增清單
+            <svg class="i" data-px="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>新增清單
           </button>
         </div>
         <div class="playlist-workbench">
@@ -110,7 +152,7 @@
           <section class="playlist-editor" aria-labelledby="playlist-title">
             <div class="playlist-head">
               <div class="playlist-cover" id="playlist-cover" aria-hidden="true">
-                <svg class="i" viewBox="0 0 24 24"><path d="M21 15V6"/><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/></svg>
+                <svg class="i" data-px="list" viewBox="0 0 24 24"><path d="M21 15V6"/><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M12 12H3"/><path d="M16 6H3"/><path d="M12 18H3"/></svg>
               </div>
               <div class="playlist-head-copy">
                 <h2 id="playlist-title">選擇播放清單</h2>
@@ -118,14 +160,14 @@
               </div>
               <div class="playlist-heading-actions">
                 <button class="button primary" id="playlist-queue-all" type="button" data-mutation-control>
-                  <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>全部加入佇列
+                  <svg class="i" data-px="queue" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>全部加入佇列
                 </button>
                 <button class="button danger" id="playlist-delete" type="button" hidden>刪除清單</button>
               </div>
             </div>
             <form class="add-track" id="playlist-add-form">
               <div class="search-field">
-                <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                <svg class="i" data-px="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                 <input id="playlist-track" type="text" autocomplete="off" placeholder="貼上連結或輸入搜尋詞" aria-label="新增播放清單歌曲" data-mutation-control>
               </div>
               <button class="button primary" type="submit" data-mutation-control>加入</button>
@@ -140,7 +182,7 @@
         <div class="page-toolbar">
           <div class="settings-toolbar">
             <div class="search-field">
-              <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <svg class="i" data-px="search" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               <input id="settings-search" type="search" placeholder="搜尋設定名稱或說明" aria-label="搜尋設定">
             </div>
             <span class="toolbar-count" id="settings-count">載入中</span>
@@ -158,7 +200,7 @@
         <div class="page-toolbar">
           <span></span>
           <button class="button primary" id="permission-add-group" type="button">
-            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>新增群組
+            <svg class="i" data-px="user" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>新增群組
           </button>
         </div>
         <div id="permissions-root" class="feature-placeholder">
@@ -173,16 +215,16 @@
           <div class="log-toolbar">
             <label class="select-field">
               <select id="log-level" aria-label="日誌等級"><option value="">全部等級</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>DEBUG</option></select>
-              <svg class="i select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              <svg class="i select-chevron" data-px="down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
             </label>
             <div class="search-field">
-              <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <svg class="i" data-px="search" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               <input id="log-search" type="search" placeholder="搜尋日誌" aria-label="搜尋日誌">
             </div>
             <label class="toggle-row"><input class="switch" id="log-auto-scroll" type="checkbox" checked><span>自動捲動</span></label>
           </div>
           <button class="button secondary" id="refresh-logs" type="button">
-            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>重新整理
+            <svg class="i" data-px="repeat" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>重新整理
           </button>
         </div>
         <pre class="log-view" id="log-view" tabindex="0" aria-label="糖音機 日誌"></pre>
@@ -196,19 +238,21 @@
 
     <div class="panel-resizer" data-resize="queue" role="separator" aria-orientation="vertical" aria-label="調整播放佇列寬度" aria-controls="queue-panel" title="拖曳調整寬度，雙擊還原" tabindex="0"></div>
 
+    <div class="queue-scrim" id="queue-scrim" hidden></div>
     <aside class="queue-panel panel" id="queue-panel" aria-labelledby="queue-heading">
+      <button class="queue-grabber" id="queue-grabber" type="button" aria-controls="queue-panel" aria-expanded="false" aria-label="打開播放佇列"><span aria-hidden="true"></span></button>
       <div class="panel-heading">
         <div class="queue-title">
           <h2 id="queue-heading">播放佇列</h2>
           <span class="queue-count" id="queue-count">0 首</span>
           <span class="queue-total" id="queue-total"></span>
         </div>
-        <button class="queue-clear icon-button danger" id="queue-clear" type="button" data-action="clear" aria-label="清空播放佇列" title="清空播放佇列" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+        <button class="queue-clear icon-button danger" id="queue-clear" type="button" data-action="clear" aria-label="清空播放佇列" title="清空播放佇列" disabled><svg data-px="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
       </div>
 
       <form class="add-track" id="add-track-form">
         <div class="search-field">
-          <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <svg class="i" data-px="search" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           <input id="track-query" type="text" autocomplete="off" placeholder="貼上連結或輸入歌曲名稱" aria-label="加入歌曲" aria-keyshortcuts="/" data-mutation-control>
         </div>
         <button class="button primary" type="submit" data-mutation-control>加入</button>
@@ -217,7 +261,7 @@
       <section class="queue-now" id="queue-now" aria-labelledby="queue-now-heading" hidden>
         <h3 class="queue-section-title" id="queue-now-heading">正在播放</h3>
         <div class="queue-now-row">
-          <span class="queue-thumb" id="queue-now-thumb"><img id="queue-now-image" alt="" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+          <span class="queue-thumb" id="queue-now-thumb"><img id="queue-now-image" alt="" hidden><svg class="i" data-px="note" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
           <span class="queue-now-copy">
             <strong id="queue-now-title"></strong>
           </span>
@@ -250,14 +294,14 @@
       <div class="transport" role="group" aria-label="播放控制">
         <div class="sheet-head">
           <button class="icon-button sheet-collapse" id="player-collapse" type="button" aria-label="收合播放畫面" title="收合">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            <svg data-px="down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <span class="sheet-title" id="sheet-title">正在播放</span>
         </div>
         <button class="bar-track" id="bar-track" type="button">
           <span class="bar-art" id="bar-art">
             <img id="bar-image" alt="" hidden>
-            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <svg class="i" data-px="note" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
           </span>
           <span class="bar-copy">
             <span class="visually-hidden">查看正在播放：</span>
@@ -268,20 +312,20 @@
         <div class="bar-center">
           <div class="transport-actions">
             <button class="transport-icon transport-shuffle" id="transport-shuffle" type="button" data-action="shuffle" aria-pressed="false" aria-label="關閉隨機播放" title="隨機播放">
-              <svg class="transport-glyph" viewBox="0 0 24 24" aria-hidden="true"><g class="sh-a"><path class="ln" d="M4 20 21 3"/><path class="ar" d="M16 3h5v5"/></g><g class="sh-b"><path class="ln" d="M4 4l5 5M15 15l6 6"/><path class="ar" d="M21 16v5h-5"/></g></svg>
+              <svg class="transport-glyph" data-px="shuffle" viewBox="0 0 24 24" aria-hidden="true"><g class="sh-a"><path class="ln" d="M4 20 21 3"/><path class="ar" d="M16 3h5v5"/></g><g class="sh-b"><path class="ln" d="M4 4l5 5M15 15l6 6"/><path class="ar" d="M21 16v5h-5"/></g></svg>
               <span class="transport-state-dot" hidden></span>
             </button>
             <button class="transport-icon transport-skip transport-prev" id="transport-previous" type="button" data-action="previous" aria-label="上一首" title="上一首" disabled>
-              <svg class="transport-glyph" viewBox="0 0 24 24" aria-hidden="true"><path class="fill echo" d="M18.5 19.5 8.5 12l10-7.5z"/><path class="fill tri" d="M18.5 19.5 8.5 12l10-7.5z"/><path class="bar" d="M5.5 5v14"/></svg>
+              <svg class="transport-glyph" data-px="prev" viewBox="0 0 24 24" aria-hidden="true"><path class="fill echo" d="M18.5 19.5 8.5 12l10-7.5z"/><path class="fill tri" d="M18.5 19.5 8.5 12l10-7.5z"/><path class="bar" d="M5.5 5v14"/></svg>
             </button>
             <button class="transport-main" id="play-toggle" type="button" data-action="pause" aria-label="暫停" title="暫停" aria-keyshortcuts="Space">
-              <svg class="pp" viewBox="0 0 24 24" aria-hidden="true"><path class="pp-l" d="M7 4.5 L12.5 8 L12.5 16 L7 19.5 Z"/><path class="pp-r" d="M12.5 8 L19.5 12 L19.5 12 L12.5 16 Z"/></svg>
+              <svg class="pp" viewBox="0 0 24 24" aria-hidden="true"><path class="pp-l" d="M7 4.5 L12.5 8 L12.5 16 L7 19.5 Z"/><path class="pp-r" d="M12.5 8 L19.5 12 L19.5 12 L12.5 16 Z"/></svg><svg class="pp-px pp-px-play" data-px="play" viewBox="0 0 24 24" aria-hidden="true"></svg><svg class="pp-px pp-px-pause" data-px="pause" viewBox="0 0 24 24" aria-hidden="true"></svg>
             </button>
             <button class="transport-icon transport-skip transport-next" id="transport-next" type="button" data-action="skip" aria-label="下一首" title="下一首">
-              <svg class="transport-glyph" viewBox="0 0 24 24" aria-hidden="true"><path class="fill echo" d="M5.5 4.5l10 7.5-10 7.5z"/><path class="fill tri" d="M5.5 4.5l10 7.5-10 7.5z"/><path class="bar" d="M18.5 5v14"/></svg>
+              <svg class="transport-glyph" data-px="next" viewBox="0 0 24 24" aria-hidden="true"><path class="fill echo" d="M5.5 4.5l10 7.5-10 7.5z"/><path class="fill tri" d="M5.5 4.5l10 7.5-10 7.5z"/><path class="bar" d="M18.5 5v14"/></svg>
             </button>
             <button class="transport-icon transport-repeat" id="transport-repeat" type="button" data-action="repeat_song" aria-pressed="false" aria-label="關閉循環，點擊切換循環模式" title="循環模式">
-              <svg class="transport-glyph" viewBox="0 0 24 24" aria-hidden="true"><g class="rp-a"><path class="ln" d="M3 11V9a3 3 0 0 1 3-3h15"/><path class="ar" d="M17 2l4 4-4 4"/></g><g class="rp-b"><path class="ln" d="M21 13v2a3 3 0 0 1-3 3H3"/><path class="ar" d="M7 22l-4-4 4-4"/></g></svg>
+              <svg class="transport-glyph" data-px="repeat" viewBox="0 0 24 24" aria-hidden="true"><g class="rp-a"><path class="ln" d="M3 11V9a3 3 0 0 1 3-3h15"/><path class="ar" d="M17 2l4 4-4 4"/></g><g class="rp-b"><path class="ln" d="M21 13v2a3 3 0 0 1-3 3H3"/><path class="ar" d="M7 22l-4-4 4-4"/></g></svg>
               <span class="transport-state-dot" id="repeat-state-dot" hidden></span>
               <span class="repeat-one-badge" id="repeat-one-badge" hidden>1</span>
             </button>
@@ -300,10 +344,10 @@
 
         <div class="bar-extras">
           <button class="transport-stop icon-button" id="transport-stop" type="button" data-action="stop" aria-label="停止播放" title="停止播放">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+            <svg data-px="stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
           </button>
           <div class="volume-row">
-            <label class="volume-label" for="volume-range" title="音量"><span class="volume-icon lv-1" id="volume-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path class="body" d="M11 5 6 9H3v6h3l5 4z"/><path class="w1" d="M15.5 8.5a5 5 0 0 1 0 7"/><path class="w2" d="M18.5 5.5a9.5 9.5 0 0 1 0 13"/></svg></span><span class="visually-hidden">音量</span></label>
+            <label class="volume-label" for="volume-range" title="音量"><span class="volume-icon lv-1" id="volume-icon" aria-hidden="true"><svg data-px="volume" viewBox="0 0 24 24"><path class="body" d="M11 5 6 9H3v6h3l5 4z"/><path class="w1" d="M15.5 8.5a5 5 0 0 1 0 7"/><path class="w2" d="M18.5 5.5a9.5 9.5 0 0 1 0 13"/></svg></span><span class="visually-hidden">音量</span></label>
             <input id="volume-range" type="range" min="1" max="100" value="25" data-mutation-control>
             <output id="volume-output" for="volume-range">25%</output>
             <span class="meme-loud" id="meme-loud" hidden><img src="/assets/meme-chick.webp" alt="音量全開：咕咕嘎嘎！！！" loading="lazy" decoding="async"></span>
@@ -328,7 +372,7 @@
         <span>目的地</span>
         <span class="select-field">
           <select id="queue-playlist-target"></select>
-          <svg class="i select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          <svg class="i select-chevron" data-px="down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </span>
       </label>
       <label class="dialog-field" id="queue-new-playlist-field" for="queue-new-playlist-name" hidden>
@@ -341,10 +385,26 @@
       </div>
     </form>
   </dialog>
+  <dialog class="ui-intro" id="ui-intro" aria-labelledby="ui-intro-title">
+    <form class="ui-intro-body" id="ui-intro-form" method="dialog">
+      <img class="ui-intro-meme" src="/assets/meme-dance.webp" alt="跳舞的企鵝" loading="lazy" decoding="async">
+      <div class="ui-intro-copy">
+        <h2 id="ui-intro-title">糖音機 3.0 來了</h2>
+        <p>新介面換上會發光的玻璃：夜晚是月光，白天是陽光，圖示改成點陣。手機打開就是播放頁，佇列從下面拉上來。</p>
+        <p class="ui-intro-hint">不喜歡的話，隨時可以在側欄的「介面」切回 2.0。</p>
+      </div>
+      <label class="ui-intro-dismiss"><input class="check" id="ui-intro-dismiss" type="checkbox"><span>不再顯示</span></label>
+      <div class="playlist-dialog-actions">
+        <button class="button secondary" id="ui-intro-stay" type="button">先用 2.0</button>
+        <button class="button primary" id="ui-intro-try" type="button">試試 3.0</button>
+      </div>
+    </form>
+  </dialog>
   <div class="reconnect-layer" id="reconnect-layer" hidden>
     <div class="reconnect-card"><img class="meme-reconnect" src="/assets/meme-hey.webp" alt="燈歪頭問：hey?" loading="lazy" decoding="async"><div class="spinner"></div><strong>正在重新連線</strong><p>控制台暫時失去 糖音機 回應。</p></div>
   </div>
 
-  <script src="/assets/app.js?v=25" defer></script>
+  <script src="/assets/lumen.js?v=4" defer></script>
+  <script src="/assets/app.js?v=33" defer></script>
 </body>
 </html>

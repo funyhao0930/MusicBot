@@ -162,6 +162,24 @@ a { color: var(--text); text-underline-offset: 3px; }
 .nav-item.is-active { color: var(--text); background: rgba(255, 255, 255, .08); }
 .nav-item.is-active .i { color: var(--accent); }
 
+/* interface version switch (2.0 / 3.0); the night / day toggle, pixel glyphs and phone drawer belong to 3.0 */
+.sidebar-prefs { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 16px 8px 0; }
+.sidebar-prefs + .sidebar-footer { margin-top: 0; }
+.ui-version { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: 1; min-width: 0; }
+.ui-version-label { color: var(--text-2); font-size: 13px; font-weight: 650; white-space: nowrap; }
+.ui-version-options { display: inline-flex; padding: 3px; border-radius: var(--radius-pill); background: rgba(255, 255, 255, .07); }
+.ui-version-option {
+  min-width: 44px; height: 30px; padding: 0 10px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-2);
+  font-size: 13px; font-weight: 750; font-variant-numeric: tabular-nums; transition: background-color var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) { .ui-version-option:hover:not(.is-active) { color: var(--text); background: var(--hover); } }
+.ui-version-option.is-active { background: var(--text); color: #121214; }
+.ui-theme-toggle, .queue-grabber, .queue-scrim, .np-clock, .pp-px { display: none; }
+.app-shell.is-sidebar-rail .sidebar-prefs { padding: 12px 0 0; }
+.app-shell.is-sidebar-rail .ui-version-label { display: none; }
+.app-shell.is-sidebar-rail .ui-version-options { flex-direction: column; border-radius: 16px; }
+.app-shell.is-sidebar-rail .ui-version-option { border-radius: 13px; }
+
 .sidebar-footer { margin-top: auto; display: flex; align-items: center; gap: 12px; padding: 16px 8px 0; }
 .meme-mascot { width: 48px; height: 48px; flex: none; object-fit: cover; border-radius: 12px; background: var(--panel-2); }
 .sidebar-status { min-width: 0; }
@@ -726,6 +744,22 @@ input[type="search"]::-webkit-search-cancel-button { filter: invert(1) brightnes
 .dialog-field .select-field, .dialog-field .select-field select, .dialog-field input { width: 100%; }
 .playlist-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+/* first visit: an invitation to try 3.0, which never comes back once a version is picked or 不再顯示 is ticked */
+.ui-intro {
+  width: min(460px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel-2); color: var(--text); box-shadow: 0 30px 80px rgba(0, 0, 0, .6), 0 4px 16px rgba(0, 0, 0, .35);
+}
+.ui-intro::backdrop { background: rgba(0, 0, 0, .62); }
+.ui-intro[open] { animation: dialog-in var(--motion-page) var(--ease-out) both; }
+.ui-intro[open]::backdrop { animation: backdrop-in var(--motion-page) var(--ease-out) both; }
+.ui-intro-body { display: grid; gap: 18px; padding: 26px; }
+.ui-intro-meme { display: block; width: 120px; height: 120px; margin: 0 auto; object-fit: cover; border-radius: var(--radius-overlay); box-shadow: 0 14px 34px rgba(0, 0, 0, .45); }
+.ui-intro-copy { text-align: center; }
+.ui-intro-copy h2 { margin: 0 0 8px; font-size: 22px; font-weight: 800; letter-spacing: -.015em; }
+.ui-intro-copy p { margin: 0; color: var(--text-2); font-size: 14.5px; line-height: 1.6; }
+.ui-intro-copy .ui-intro-hint { margin-top: 8px; color: var(--text-3); font-size: 13px; }
+.ui-intro-dismiss { display: inline-flex; align-items: center; gap: 10px; justify-self: start; min-height: 44px; color: var(--text-2); font-size: 14px; font-weight: 600; cursor: pointer; }
+
 /* ---------- Toasts and overlays ---------- */
 .toast-region { position: fixed; left: 50%; bottom: calc(var(--bar-h) + 14px); z-index: 40; display: grid; justify-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); transform: translateX(-50%); pointer-events: none; }
 .toast {
@@ -848,6 +882,10 @@ input[type="search"]::-webkit-search-cancel-button { filter: invert(1) brightnes
   .nav-item .i { width: 18px; height: 18px; }
   .nav-item:not(.is-active) span { display: none; }
   .sidebar-footer { display: none; }
+  .sidebar-prefs { flex: none; margin: 0; padding: 0; }
+  .ui-version-label { display: none; }
+  .ui-version-options { padding: 2px; }
+  .ui-version-option { min-width: 34px; height: 32px; padding: 0 6px; font-size: 12.5px; }
   .main { overflow: visible; }
   .topbar { position: static; flex-wrap: wrap; min-height: 0; padding: 14px 16px 6px; background: transparent; }
   .topbar h1 { flex: 1 1 100%; }
@@ -937,6 +975,129 @@ input[type="search"]::-webkit-search-cancel-button { filter: invert(1) brightnes
   .nav-list { justify-content: flex-start; }
   .queue-panel .add-track .button { padding: 0 16px; }
 }
+
+/* 2.0 → 3.0: the old look blurs back and sinks into the dark the 3.0 welcome starts from, so the reload never flashes */
+html.is-ui-leaving::after {
+  content: ""; position: fixed; inset: 0; z-index: 2147483000; pointer-events: all;
+  background: var(--ui-leave-bg, #08090b); animation: ui-leave 300ms cubic-bezier(.4, 0, 1, 1) both;
+}
+html.is-ui-leaving .app-shell { transform: scale(.985); filter: blur(4px); transition: transform 320ms cubic-bezier(.4, 0, 1, 1), filter 320ms ease-in; }
+@keyframes ui-leave { from { opacity: 0; } }
+
+/* ---------- 2.0 arrival (3.0 → 2.0 only; app.js playUiOldie) ----------
+   0–520 ms    an old CRT clicks on: a white-hot line, then the picture, scanlines and a slow flicker
+   380–1300    VHS "◀◀ REWIND": 3.0 winds back to 2.0 with a jittering, colour-split picture and a tracking band
+   1300        lands on 2.0 with a thunk, the OSD flips to "▶ PLAY", and the penguin pops up flapping
+   1660        the speech bubble pops: 你個過時老人，還在用舊版，哈哈！ (the 哈哈！ keeps laughing)
+   3900        the set switches off like an old TV (line, then dot) and 2.0 shows itself
+   A click or any key skips to the switch-off. The 1999 date stamp is part of the joke. */
+html[data-ui-oldie] body { background: var(--shell); }
+html[data-ui-oldie] .app-shell { opacity: 0; animation: oldie-failsafe 1ms 8s forwards; }
+@keyframes oldie-failsafe { to { opacity: 1; } }
+
+.ui-oldie { position: fixed; inset: 0; z-index: 1000; background: #000; user-select: none; cursor: default; }
+.ui-oldie-screen {
+  position: absolute; inset: 0; overflow: hidden; display: grid; place-items: center;
+  background: radial-gradient(120% 90% at 50% 50%, #1d1c24 0%, #0d0c11 62%, #020203 100%);
+  box-shadow: inset 0 0 140px rgba(0, 0, 0, .85);
+  animation: oldie-crt-on 560ms cubic-bezier(.2, .7, .3, 1) both;
+}
+@keyframes oldie-crt-on {
+  0% { transform: scale(0, .004); filter: brightness(6); }
+  38% { transform: scale(1, .004); filter: brightness(6); }
+  70% { transform: scale(1, 1.02); filter: brightness(2); }
+  100% { transform: none; filter: none; }
+}
+.ui-oldie-scanlines {
+  position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .3) 0 1px, transparent 1px 3px);
+  animation: oldie-flicker 160ms steps(2) infinite;
+}
+@keyframes oldie-flicker { 50% { opacity: .78; } }
+.ui-oldie-tracking {
+  position: absolute; left: 0; right: 0; top: -20%; height: 16vh; pointer-events: none;
+  background: linear-gradient(transparent, rgba(255, 255, 255, .06) 35%, rgba(255, 255, 255, .14) 50%, rgba(255, 255, 255, .06) 65%, transparent);
+  animation: oldie-tracking 620ms linear 380ms 2 both;
+}
+@keyframes oldie-tracking { from { transform: translateY(0); } to { transform: translateY(140vh); } }
+.ui-oldie.is-landed .ui-oldie-tracking { opacity: 0; animation: none; }
+
+.ui-oldie-osd, .ui-oldie-stamp { position: absolute; font-family: var(--font-mono); font-weight: 700; letter-spacing: .06em; animation: oldie-osd-in 1ms 420ms both; }
+@keyframes oldie-osd-in { from { visibility: hidden; } }
+.ui-oldie-osd {
+  top: clamp(18px, 4vh, 36px); left: clamp(18px, 4vw, 40px); font-size: clamp(18px, 2.4vw, 28px); color: var(--text);
+  text-shadow: -2px 0 rgba(255, 40, 90, .55), 2px 0 rgba(40, 220, 255, .5);
+}
+.ui-oldie:not(.is-landed) .ui-oldie-osd-label { animation: oldie-blink 520ms steps(2) infinite; }
+@keyframes oldie-blink { 50% { opacity: 0; } }
+.ui-oldie-stamp {
+  bottom: clamp(18px, 4vh, 36px); right: clamp(18px, 4vw, 40px); font-size: clamp(13px, 1.7vw, 20px);
+  color: var(--warning); text-shadow: 0 0 6px rgba(247, 185, 85, .55);
+}
+
+.ui-oldie-body { position: relative; display: grid; justify-items: center; gap: clamp(14px, 3vh, 28px); padding: 24px; }
+.ui-oldie-version { margin: 0; }
+.ui-oldie-digits {
+  display: inline-block; font: 800 clamp(84px, 15vw, 168px)/1 var(--font-mono); letter-spacing: -.02em; color: var(--text);
+  text-shadow: -4px 0 rgba(255, 40, 90, .6), 4px 0 rgba(40, 220, 255, .55), 0 0 32px rgba(255, 255, 255, .22);
+  animation: oldie-jitter 140ms steps(2) infinite;
+}
+@keyframes oldie-jitter {
+  0% { transform: translate(-3px, 1px) skewX(-4deg); clip-path: inset(0 0 0 0); }
+  50% { transform: translate(3px, -1px) skewX(3deg); clip-path: inset(18% 0 0 0); }
+}
+.ui-oldie.is-landed .ui-oldie-digits { animation: oldie-thunk 460ms cubic-bezier(.3, 1.6, .5, 1) both; }
+@keyframes oldie-thunk { 0% { transform: scale(1.22); filter: brightness(2); } 100% { transform: none; filter: none; } }
+
+.ui-oldie-mascot { display: flex; align-items: center; gap: 18px; margin: 0; opacity: 0; }
+.ui-oldie.is-landed .ui-oldie-mascot { opacity: 1; }
+.ui-oldie-mascot img {
+  width: 152px; height: 152px; border-radius: var(--radius-overlay); object-fit: cover; box-shadow: 0 14px 30px rgba(0, 0, 0, .55);
+  transform-origin: 50% 100%;
+}
+.ui-oldie.is-landed .ui-oldie-mascot img {
+  animation: oldie-pop 640ms cubic-bezier(.34, 1.56, .64, 1) 80ms both, oldie-cackle 460ms ease-in-out 760ms infinite alternate;
+}
+@keyframes oldie-pop { from { opacity: 0; transform: translateY(70px) scale(.5) rotate(-14deg); } }
+@keyframes oldie-cackle { from { transform: rotate(-4deg); } to { transform: rotate(4deg) translateY(-3px); } }
+.ui-oldie-bubble {
+  position: relative; max-width: 310px; padding: 16px 20px; border-radius: 20px; background: var(--text); color: #121214;
+  font: 800 clamp(17px, 2.2vw, 23px)/1.4 var(--font-ui); text-align: left; transform-origin: 0 50%;
+}
+.ui-oldie-bubble::before {
+  content: ""; position: absolute; left: -9px; top: 50%; width: 18px; height: 18px; margin-top: -9px;
+  background: inherit; border-radius: 3px; transform: rotate(45deg);
+}
+.ui-oldie.is-landed .ui-oldie-bubble { animation: oldie-bubble 460ms cubic-bezier(.34, 1.56, .64, 1) 360ms both; }
+@keyframes oldie-bubble { from { opacity: 0; transform: scale(.3) rotate(-6deg); } }
+.ui-oldie-haha { color: var(--accent-press); white-space: nowrap; }
+.ui-oldie-haha span { display: inline-block; }
+.ui-oldie.is-landed .ui-oldie-haha span { animation: oldie-haha 300ms ease-in-out 820ms infinite alternate; }
+.ui-oldie.is-landed .ui-oldie-haha span:nth-child(2) { animation-delay: 900ms; }
+.ui-oldie.is-landed .ui-oldie-haha span:nth-child(3) { animation-delay: 980ms; }
+@keyframes oldie-haha { from { transform: translateY(1px) rotate(-6deg); } to { transform: translateY(-5px) rotate(8deg) scale(1.12); } }
+@media (max-width: 560px) {
+  .ui-oldie-mascot { flex-direction: column; gap: 16px; }
+  .ui-oldie-mascot img { width: 112px; height: 112px; }
+  .ui-oldie-bubble { text-align: center; transform-origin: 50% 0; }
+  .ui-oldie-bubble::before { left: 50%; top: -9px; margin: 0 0 0 -9px; }
+}
+
+/* leaving: the old set switches off (squashed to a line, then a dot), then the black lifts off 2.0 */
+.ui-oldie.is-leaving { pointer-events: none; animation: oldie-fade 380ms ease-out 360ms forwards; }
+.ui-oldie.is-leaving .ui-oldie-screen { animation: oldie-crt-off 440ms cubic-bezier(.6, 0, .9, .5) forwards; }
+.ui-oldie.is-leaving.is-fast { animation-duration: 260ms; animation-delay: 200ms; }
+.ui-oldie.is-leaving.is-fast .ui-oldie-screen { animation-duration: 260ms; }
+@keyframes oldie-crt-off {
+  0% { transform: none; filter: none; }
+  48% { transform: scale(1, .006); filter: brightness(4); }
+  80% { transform: scale(.02, .006); filter: brightness(6); opacity: 1; }
+  100% { transform: scale(0, 0); filter: brightness(6); opacity: 0; }
+}
+@keyframes oldie-fade { to { opacity: 0; } }
+.app-shell.is-oldie-reveal { animation: oldie-reveal 560ms var(--ease-out) 320ms both; }
+/* opacity only: a transform on the shell would carry the fixed phone bars along */
+@keyframes oldie-reveal { from { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }

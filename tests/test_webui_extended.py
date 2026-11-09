@@ -357,8 +357,8 @@ class WebUIExtendedAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="progress-track"', html)
         self.assertIn('id="volume-icon"', html)
         self.assertIn('aria-pressed="false"', html)
-        self.assertIn('/assets/styles.css?v=21', html)
-        self.assertIn('/assets/app.js?v=25', html)
+        self.assertIn('/assets/styles.css?v=24', html)
+        self.assertIn('/assets/app.js?v=33', html)
 
         response = await self.client.get("/assets/styles.css")
         self.assertEqual(response.status, 200)
@@ -701,6 +701,215 @@ const response = (ok, payload) => ({
   await vm.runInContext("reorderQueue(0, 1)", context);
   if (calls.length !== 2) throw new Error("busy gate submitted a duplicate reorder");
 })().catch(error => { console.error(error.stack); process.exit(1); });
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(app_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_interface_v3_ships_beside_v2(self):
+        response = await self.client.get("/")
+        html = await response.text()
+        # 2.0 stays the default; 3.0 is a second stylesheet the inline script enables before the first paint
+        self.assertIn('id="ui-v3-stylesheet"', html)
+        self.assertIn('/assets/styles-v3.css?v=11', html)
+        self.assertIn('media="not all"', html)
+        self.assertIn('localStorage.getItem("musicbot.uiVersion")', html)
+        self.assertIn('data-ui-version="2"', html)
+        self.assertIn('data-ui-version="3"', html)
+        self.assertIn('id="ui-theme-toggle"', html)
+        self.assertIn('id="ui-intro"', html)
+        self.assertIn('id="ui-intro-dismiss"', html)
+        self.assertIn("不再顯示", html)
+        self.assertIn('id="queue-grabber"', html)
+        self.assertIn('data-px="play"', html)
+        # the version switch sits in the sidebar, outside the local-only pages, so public viewers get it too
+        self.assertLess(html.index('id="sidebar-prefs"'), html.index('<main class="main panel"'))
+
+        response = await self.client.get("/assets/styles-v3.css")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.content_type, "text/css")
+        css = await response.text()
+        self.assertIn('[data-ui="3"]', css)
+        self.assertIn('[data-theme="light"]', css)
+        self.assertIn("prefers-reduced-motion", css)
+        # the 2.0 → 3.0 welcome hides the app until it plays; a failsafe must bring the app back even if app.js never runs
+        self.assertIn('sessionStorage.getItem("musicbot.uiWelcome")', html)
+        self.assertIn("html[data-ui-welcome] .app-shell", css)
+        self.assertIn("v3-welcome-failsafe", css)
+        # night ⇄ day crossfades the whole page on easeOutExpo through a view transition
+        self.assertIn("html.is-theme-fading::view-transition-old(root)", css)
+        self.assertIn("cubic-bezier(.16, 1, .3, 1)", css)
+        # 3.0 → 2.0 teases whoever went back, with the same never-stay-hidden failsafe
+        self.assertIn('sessionStorage.getItem("musicbot.uiOldie")', html)
+        response = await self.client.get("/assets/styles.css")
+        legacy_css = await response.text()
+        self.assertIn("html[data-ui-oldie] .app-shell", legacy_css)
+        self.assertIn("oldie-failsafe", legacy_css)
+
+        for font in (
+            "instrument-sans-latin-wght.woff2",
+            "instrument-sans-latin-ext-wght.woff2",
+            "doto-latin-wght.woff2",
+            "geist-mono-latin-wght.woff2",
+        ):
+            self.assertIn(f"/assets/{font}", css)
+            response = await self.client.get(f"/assets/{font}")
+            self.assertEqual(response.status, 200, font)
+            self.assertEqual(response.content_type, "font/woff2")
+            self.assertTrue((await response.read()).startswith(b"wOF2"), font)
+
+        # the light and motion come from the design system's own component styles and their React-free port
+        self.assertIn('/assets/lumen.css?v=3', html)
+        self.assertIn('id="ui-lumen-stylesheet"', html)
+        self.assertLess(html.index("/assets/lumen.js"), html.index("/assets/app.js"))
+        response = await self.client.get("/assets/lumen.css")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.content_type, "text/css")
+        lumen_css = await response.text()
+        for rule in (".lg-glass", ".lg-rim-outer", ".lg-saber-bloom", ".lg-btn-lit", ".lg-switch", ".lg-slider", ".lg-toast"):
+            self.assertIn(rule, lumen_css)
+        self.assertNotIn("fonts.googleapis.com", lumen_css)
+        response = await self.client.get("/assets/lumen.js")
+        self.assertEqual(response.status, 200)
+        self.assertIn("window.LumenLite", await response.text())
+
+    async def test_lumen_port_stays_out_of_v2(self):
+        lumen_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "lumen.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const root = { dataset: { ui: "2" } };
+const touched = [];
+const element = {
+  dataset: {},
+  classList: { add(...names) { touched.push(names.join(" ")); }, contains() { return false; } },
+  appendChild() { touched.push("append"); },
+  insertBefore() { touched.push("insert"); },
+  addEventListener() {},
+};
+const context = {
+  window: {},
+  document: { documentElement: root, createElement() { throw new Error("2.0 must not build glass"); } },
+  navigator: {},
+  CSS: { supports() { return false; } },
+  getComputedStyle() { return { getPropertyValue() { return ""; } }; },
+  console,
+};
+vm.createContext(context);
+vm.runInContext(source, context);
+const L = context.window.LumenLite;
+if (!L) throw new Error("LumenLite was not exposed");
+if (L.active()) throw new Error("data-ui=2 must read as inactive");
+L.button(element);
+L.field(element);
+if (L.range(element) !== null || L.switchify(element) !== null || L.pill(element, { items: "x", active: "x" }) !== null) {
+  throw new Error("enhancers must do nothing in 2.0");
+}
+if (touched.length) throw new Error(`2.0 element was changed: ${touched.join(", ")}`);
+root.dataset.ui = "3";
+if (!L.active()) throw new Error("data-ui=3 should read as active");
+"""
+        result = subprocess.run(
+            ["node", "-e", harness, str(lumen_js)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_frontend_interface_version_preferences(self):
+        app_js = Path(__file__).parents[1] / "musicbot" / "webui_assets" / "app.js"
+        harness = r"""
+const fs = require("fs");
+const vm = require("vm");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const store = new Map();
+let reloads = 0;
+let blocked = false;
+let timers = [];
+const session = new Map();
+const rootClasses = new Set();
+const root = { dataset: {}, classList: { add(name) { rootClasses.add(name); } }, style: { setProperty() {} } };
+const document = {
+  documentElement: root,
+  addEventListener() {},
+  querySelector() { return null; },
+  querySelectorAll() { return []; },
+};
+const context = {
+  document,
+  window: { addEventListener() {} },
+  location: { reload() { reloads += 1; } },
+  localStorage: {
+    getItem(key) { if (blocked) throw new Error("blocked"); return store.has(key) ? store.get(key) : null; },
+    setItem(key, value) { if (blocked) throw new Error("blocked"); store.set(key, String(value)); },
+  },
+  sessionStorage: {
+    getItem(key) { return session.has(key) ? session.get(key) : null; },
+    setItem(key, value) { session.set(key, String(value)); },
+    removeItem(key) { session.delete(key); },
+  },
+  console,
+  performance: { now: () => 0 },
+  requestAnimationFrame() {},
+  setInterval() {},
+  setTimeout(fn) { timers.push(fn); },
+};
+context.globalThis = context;
+vm.createContext(context);
+vm.runInContext(source, context);
+const run = code => vm.runInContext(code, context);
+const flushTimers = () => { const due = timers; timers = []; due.forEach(fn => fn()); };
+
+if (run("uiVersion()") !== "2") throw new Error("2.0 must be the default");
+if (!run("shouldShowUiIntro()")) throw new Error("a first visit should see the 3.0 invitation");
+
+store.set("musicbot.uiIntroDismissed", "1");
+if (run("shouldShowUiIntro()")) throw new Error("不再顯示 must keep the invitation away");
+store.delete("musicbot.uiIntroDismissed");
+
+timers = [];
+run('setUiVersion("3")');
+if (store.get("musicbot.uiVersion") !== "3") throw new Error("choosing 3.0 was not remembered");
+if (session.get("musicbot.uiWelcome") !== "1") throw new Error("2.0 → 3.0 should ask the next page for the welcome animation");
+if (!rootClasses.has("is-ui-leaving")) throw new Error("2.0 should fade out before the reload");
+if (reloads !== 0) throw new Error("the reload should wait for the fade-out");
+flushTimers();
+if (reloads !== 1) throw new Error("switching versions should reload into the other interface");
+if (run("shouldShowUiIntro()")) throw new Error("someone who picked a version should not be invited again");
+
+root.dataset.ui = "3";
+if (run("uiVersion()") !== "3") throw new Error("data-ui=3 should read as 3.0");
+run('setUiVersion("3")');
+if (reloads !== 1) throw new Error("picking the current version should not reload");
+timers = [];
+run('setUiVersion("2")');
+if (session.get("musicbot.uiOldie") !== "1") throw new Error("3.0 → 2.0 should ask 2.0 for its teasing arrival");
+flushTimers();
+if (reloads !== 2) throw new Error("going back to 2.0 should reload once the glass has slid over");
+root.dataset.ui = "3";
+
+run('setUiTheme("light")');
+if (root.dataset.theme !== "light" || store.get("musicbot.uiTheme") !== "light") throw new Error("day theme was not applied");
+
+blocked = true;
+if (run('readPreference("musicbot.uiVersion")') !== null) throw new Error("blocked storage should read as unset");
+run('setUiTheme("dark")');
+if (root.dataset.theme !== "dark") throw new Error("blocked storage must not stop the theme switch");
+
+const mark = run("welcomeMarkMarkup()");
+const litDots = run('WELCOME_MARK.join("").split("#").length - 1');
+if ((mark.match(/class="w-on"/g) || []).length !== litDots) throw new Error("the welcome 3.0 should light exactly its glyph dots");
+if ((mark.match(/class="w-off"/g) || []).length !== 15 * 9) throw new Error("the welcome display should have a full dim dot grid");
+
+const markup = run('pixelIconMarkup("play")');
+if (!markup.includes("<rect") || !markup.includes('class="px-on"')) throw new Error("pixel glyphs did not render");
+if (run('pixelIconMarkup("missing")') !== "") throw new Error("unknown glyphs should be left alone");
 """
         result = subprocess.run(
             ["node", "-e", harness, str(app_js)],
