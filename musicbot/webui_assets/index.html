@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#050506">
   <title>糖音機 控制中心</title>
   <link rel="preload" href="/assets/figtree-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/assets/styles.css?v=24">
+  <link rel="stylesheet" href="/assets/styles.css?v=25">
   <link rel="stylesheet" href="/assets/lumen.css?v=3" id="ui-lumen-stylesheet" media="not all">
   <link rel="stylesheet" href="/assets/styles-v3.css?v=12" id="ui-v3-stylesheet" media="not all">
   <script>
@@ -281,7 +281,8 @@
         <button class="button secondary small" id="queue-add-to-playlist" type="button" disabled>加入播放清單</button>
       </div>
 
-      <div class="queue-list" id="queue-list" aria-live="polite" aria-labelledby="queue-next-heading"></div>
+      <div class="queue-list" id="queue-list" aria-labelledby="queue-next-heading"></div>
+      <p class="visually-hidden" id="queue-status" role="status"></p>
       <div class="empty-state" id="queue-empty">
         <img class="meme-empty" src="/assets/meme-you-penguin.webp" alt="你是凑企鵝" loading="lazy" decoding="async">
         <strong>佇列還是空的</strong>
@@ -362,7 +363,7 @@
     <img class="meme-offline" src="/assets/meme-hey.webp" alt="" loading="lazy" decoding="async">
     <span>糖音機暫時無法連線，控制台會自動重試。</span>
   </div>
-  <dialog class="playlist-dialog" id="queue-playlist-dialog" aria-labelledby="queue-playlist-dialog-title">
+  <dialog class="playlist-dialog" id="queue-playlist-dialog" aria-labelledby="queue-playlist-dialog-title" closedby="any">
     <form id="queue-playlist-form" method="dialog">
       <div class="playlist-dialog-heading">
         <h2 id="queue-playlist-dialog-title">加入播放清單</h2>
@@ -382,6 +383,22 @@
       <div class="playlist-dialog-actions">
         <button class="button secondary" id="queue-playlist-cancel" type="button">取消</button>
         <button class="button primary" id="queue-playlist-submit" type="submit" data-mutation-control>加入播放清單</button>
+      </div>
+    </form>
+  </dialog>
+  <!-- asks before anything that cannot be undone: deleting a playlist or a permission group, restarting the bot -->
+  <dialog class="playlist-dialog confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message" closedby="any">
+    <form id="confirm-dialog-form" method="dialog">
+      <div class="confirm-dialog-body">
+        <img class="confirm-dialog-meme" src="/assets/meme-stare.webp" alt="" width="72" height="72" loading="lazy" decoding="async">
+        <div class="playlist-dialog-heading">
+          <h2 id="confirm-dialog-title">確定嗎？</h2>
+          <p id="confirm-dialog-message"></p>
+        </div>
+      </div>
+      <div class="playlist-dialog-actions">
+        <button class="button secondary" id="confirm-dialog-cancel" type="submit" value="cancel" autofocus>先不要</button>
+        <button class="button danger" id="confirm-dialog-accept" type="submit" value="confirm">確定</button>
       </div>
     </form>
   </dialog>
@@ -405,6 +422,6 @@
   </div>
 
   <script src="/assets/lumen.js?v=4" defer></script>
-  <script src="/assets/app.js?v=33" defer></script>
+  <script src="/assets/app.js?v=34" defer></script>
 </body>
 </html>

@@ -15,6 +15,8 @@ const state = {
   draggingIndex: null,
   suppressQueueClick: false,
   queueRenderKey: null,
+  // the queue the rows on screen were built from; reused rows read their song from here
+  renderedQueue: [],
   selectedQueueIndexes: new Set(),
   settings: [],
   playlists: [],
@@ -164,9 +166,14 @@ function setProgressVisual(seconds, total) {
   const clockTotal = $("#np-clock-total");
   if (clockTotal && "textContent" in clockTotal) clockTotal.textContent = `/ ${formatTime(total)}`;
   globalThis.LumenLite?.syncRange?.($("#progress-range"));
+  // the range's value is raw seconds; screen readers hear the same "1:23 / 3:45" the time labels show
+  const range = $("#progress-range");
+  const spoken = total > 0 ? `${formatTime(seconds)} / ${formatTime(total)}` : "尚未播放";
+  if (range?.setAttribute && range.getAttribute?.("aria-valuetext") !== spoken) range.setAttribute("aria-valuetext", spoken);
 }
 
 function setVolumeVisual(volume) {
+  $("#volume-range")?.setAttribute?.("aria-valuetext", `${Math.round(volume)}%`);
   const level = volume <= 0 ? 0 : volume <= 40 ? 1 : 2;
   const icon = $("#volume-icon");
   if (typeof icon?.classList?.add !== "function") return;
@@ -1138,63 +1145,153 @@ function renderQueue(queue) {
   if (state.draggingIndex !== null) return;
   state.selectedQueueIndexes.clear();
   state.queueRenderKey = renderKey;
+  state.renderedQueue = queue;
 
   const previousRects = captureRowRects(list);
+  // rows are keyed by song, so a song that stays in the queue keeps its node: focus on its handle, its loaded
+  // thumbnail and its running animations survive a reorder, and the FLIP below glides that same node
+  const existing = new Map();
+  (typeof list.querySelectorAll === "function" ? $$(".queue-item", list) : list.children || [])
+    .forEach(row => { if (row?.dataset?.key) existing.set(row.dataset.key, row); });
   const keyCounts = {};
   const rows = queue.map((entry, index) => {
-    const row = document.createElement("div");
-    row.className = "queue-item";
-    row.dataset.index = index;
     const baseKey = `${entry.url || ""}\u0000${entry.title || ""}`;
     keyCounts[baseKey] = (keyCounts[baseKey] || 0) + 1;
-    row.dataset.key = `${baseKey}\u0000${keyCounts[baseKey]}`;
-    row.style?.setProperty?.("--i", String(index));
-    const disabled = state.mutationBusy ? " disabled" : "";
-    row.innerHTML = `<label class="queue-lead"><span class="queue-index">${index + 1}</span><input class="queue-select-input" type="checkbox"${disabled}></label><span class="queue-thumb">${NOTE_ICON}${THUMB_PLAY_ICON}</span><button class="queue-copy queue-play-target" type="button"${disabled}><strong></strong><small class="queue-meta-time"></small></button><span class="queue-row-end"><span class="queue-duration"></span><span class="queue-row-actions"><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除"${disabled}>${QUEUE_ACTION_ICONS.remove}</button><button class="queue-handle icon-button" type="button" title="按住拖曳排序"${disabled}>${QUEUE_ACTION_ICONS.grip}</button></span></span>`;
-    const checkbox = $(".queue-select-input", row);
-    // titles come from the media source, so they are set as text or attributes, never as markup
-    checkbox.setAttribute?.("aria-label", `選取第 ${index + 1} 首歌曲`);
-    $(".queue-play-target", row).setAttribute?.("aria-label", `播放第 ${index + 1} 首：${entry.title}`);
-    $(".queue-handle", row).setAttribute?.("aria-label", `排序第 ${index + 1} 首：按住拖曳，或用上下方向鍵移動`);
-    checkbox.checked = state.selectedQueueIndexes.has(index);
-    checkbox.addEventListener("change", () => {
-      if (checkbox.checked) state.selectedQueueIndexes.add(index);
-      else state.selectedQueueIndexes.delete(index);
-      syncQueueSelectionControls(queue);
-    });
-    if (entry.thumbnail) {
-      const thumb = $(".queue-thumb", row);
+    const key = `${baseKey}\u0000${keyCounts[baseKey]}`;
+    let row = existing.get(key);
+    existing.delete(key);
+    if (row) {
+      // dropped from a drag: the lift comes off before the glide is measured, without the row's own
+      // transform transition (a transition would outrank the FLIP and start from the old slot)
+      if (row.classList.contains?.("is-dragging") && row.style) {
+        row.style.transition = "none";
+        settleQueueRow(row);
+        row.getBoundingClientRect?.();
+        row.style.removeProperty?.("transition");
+      } else settleQueueRow(row);
+      // its entrance already played; re-inserting it (Safari) must not play it again
+      row.classList.remove("is-new");
+      row.classList.add("is-settled");
+    } else {
+      row = createQueueRow();
+      row.dataset.key = key;
+    }
+    fillQueueRow(row, entry, index);
+    return row;
+  });
+  placeQueueRows(list, rows, existing);
+  animateQueueReflow(rows, previousRects);
+  syncQueueRowControls(queue);
+  syncQueueSelectionControls(queue);
+}
+
+// Same order in the DOM as on screen. moveBefore() moves a row without taking it out of the document, so a focused
+// handle stays focused; browsers without it (Safari) fall back to re-inserting, which is what the whole list did before.
+function placeQueueRows(list, rows, leftovers) {
+  if (typeof list.moveBefore !== "function" || typeof list.insertBefore !== "function") {
+    list.replaceChildren(...rows);
+    return;
+  }
+  leftovers.forEach(row => row.remove());
+  rows.forEach(row => {
+    if (row.parentNode === list) list.moveBefore(row, null);
+    else list.insertBefore(row, null);
+  });
+}
+
+function createQueueRow() {
+  const row = document.createElement("div");
+  row.className = "queue-item";
+  row.innerHTML = `<label class="queue-lead"><span class="queue-index"></span><input class="queue-select-input" type="checkbox"></label><span class="queue-thumb">${NOTE_ICON}${THUMB_PLAY_ICON}</span><button class="queue-copy queue-play-target" type="button"><strong><span class="queue-title-text"></span></strong><small class="queue-meta-time"></small></button><span class="queue-row-end"><span class="queue-duration"></span><span class="queue-row-actions"><button class="queue-remove icon-button danger" type="button" aria-label="從佇列移除" title="從佇列移除">${QUEUE_ACTION_ICONS.remove}</button><button class="queue-handle icon-button" type="button" title="按住拖曳排序">${QUEUE_ACTION_ICONS.grip}</button></span></span>`;
+  // the row is reused across renders, so every handler reads the row's current slot instead of capturing one
+  const slot = () => Number(row.dataset.index);
+  const checkbox = $(".queue-select-input", row);
+  checkbox.addEventListener("change", () => {
+    if (checkbox.checked) state.selectedQueueIndexes.add(slot());
+    else state.selectedQueueIndexes.delete(slot());
+    syncQueueSelectionControls(state.renderedQueue || []);
+  });
+  $(".queue-play-target", row).addEventListener("click", () => playQueueItem(slot()));
+  const handle = $(".queue-handle", row);
+  handle.addEventListener("pointerdown", event => startQueueDrag(event, row, slot()));
+  handle.addEventListener("keydown", event => nudgeQueueItem(event, slot(), (state.renderedQueue || []).length));
+  $(".queue-remove", row).addEventListener("click", () => removeQueueItem(slot(), row));
+  const isInteractiveTarget = target => Boolean(target?.closest?.("button, input, label, a, select"));
+  row.addEventListener("click", event => {
+    if (state.suppressQueueClick || state.mutationBusy || isInteractiveTarget(event.target)) return;
+    playQueueItem(slot());
+  });
+  observeQueueTitle($("strong", row));
+  return row;
+}
+
+function fillQueueRow(row, entry, index) {
+  row.dataset.index = index;
+  row.style?.setProperty?.("--i", String(index));
+  const number = $(".queue-index", row);
+  if (number) number.textContent = String(index + 1);
+  const checkbox = $(".queue-select-input", row);
+  // titles come from the media source, so they are set as text or attributes, never as markup
+  checkbox.setAttribute?.("aria-label", `選取第 ${index + 1} 首歌曲`);
+  checkbox.checked = state.selectedQueueIndexes.has(index);
+  $(".queue-play-target", row).setAttribute?.("aria-label", `播放第 ${index + 1} 首：${entry.title}`);
+  $(".queue-handle", row).setAttribute?.("aria-label", `排序第 ${index + 1} 首「${entry.title}」：按住拖曳，或用上下方向鍵移動`);
+  const thumbnail = entry.thumbnail || "";
+  if (row.dataset.thumbnail !== thumbnail) {
+    row.dataset.thumbnail = thumbnail;
+    const thumb = $(".queue-thumb", row);
+    thumb?.querySelector?.("img")?.remove?.();
+    thumb?.classList?.toggle?.("is-letterboxed", Boolean(thumbnail) && isLetterboxed(thumbnail));
+    if (thumbnail) {
       const image = document.createElement("img");
       image.alt = "";
       image.loading = "lazy";
       image.decoding = "async";
       image.onerror = () => image.remove?.();
-      image.src = entry.thumbnail;
-      thumb?.classList?.toggle?.("is-letterboxed", isLetterboxed(entry.thumbnail));
+      image.src = thumbnail;
       thumb?.prepend?.(image);
     }
-    const title = $("strong", row);
-    title.textContent = entry.title;
+  }
+  const title = $("strong", row);
+  const text = $(".queue-title-text", row) || title;
+  if (text.textContent !== entry.title) {
+    text.textContent = entry.title;
     title.title = entry.title;
-    $(".queue-meta-time", row).textContent = formatTime(entry.duration);
-    $(".queue-duration", row).textContent = formatTime(entry.duration);
-    $(".queue-play-target", row).addEventListener("click", () => playQueueItem(index));
-    const handle = $(".queue-handle", row);
-    handle.addEventListener("pointerdown", event => startQueueDrag(event, row, index));
-    handle.addEventListener("keydown", event => nudgeQueueItem(event, index, queue.length));
-    $(".queue-remove", row).addEventListener("click", () => removeQueueItem(index, row));
-    const isInteractiveTarget = target => Boolean(target?.closest?.("button, input, label, a, select"));
-    const playFromRow = event => {
-      if (state.suppressQueueClick || state.mutationBusy || isInteractiveTarget(event.target)) return;
-      playQueueItem(index);
-    };
-    row.addEventListener("click", playFromRow);
-    return row;
-  });
-  list.replaceChildren(...rows);
-  animateQueueReflow(rows, previousRects);
-  syncQueueRowControls(queue);
-  syncQueueSelectionControls(queue);
+    checkQueueTitle(title);
+  }
+  $(".queue-meta-time", row).textContent = formatTime(entry.duration);
+  $(".queue-duration", row).textContent = formatTime(entry.duration);
+}
+
+// Long titles are cut with an ellipsis; hovering the row or focusing it with the keyboard scrolls the rest into
+// view (styles.css). Only titles that really overflow are flagged, so short ones never move.
+const queueTitleObserver = typeof ResizeObserver === "function"
+  ? new ResizeObserver(entries => entries.forEach(entry => checkQueueTitle(entry.target)))
+  : null;
+
+function observeQueueTitle(title) {
+  if (title && queueTitleObserver) queueTitleObserver.observe(title);
+}
+
+function checkQueueTitle(title) {
+  if (!title?.classList || typeof title.scrollWidth !== "number") return;
+  const hidden = title.scrollWidth - title.clientWidth;
+  title.classList.toggle("is-truncated", hidden > 1);
+  if (hidden > 1) title.style?.setProperty?.("--scroll-width", String(Math.round(hidden)));
+  else title.style?.removeProperty?.("--scroll-width");
+}
+
+// one polite message per action: the list itself is not a live region, or every moved row would be read out
+let queueStatusToken = 0;
+function announceQueue(message) {
+  const status = $("#queue-status");
+  if (!status || !("textContent" in status)) return;
+  const token = ++queueStatusToken;
+  status.textContent = "";
+  // without moveBefore() the focused handle is re-inserted and re-announced, which would swallow a quick message;
+  // only the latest message is spoken when several land close together
+  const delay = typeof $("#queue-list")?.moveBefore === "function" ? 60 : 500;
+  setTimeout(() => { if (token === queueStatusToken) status.textContent = message; }, delay);
 }
 
 function syncQueueRowControls(queue) {
@@ -1356,6 +1453,7 @@ function finishQueueDrag(event, commit) {
   document.body.classList.remove("is-queue-dragging");
   clearQueueDropIndicators();
   setTimeout(() => { state.suppressQueueClick = false; }, 0);
+  if (!event && !commit) announceQueue("已取消排序，歌曲留在原位");
   if (target === source || state.mutationBusy) {
     settleQueueRow(row);
     renderQueue(state.player?.queue || []);
@@ -1442,9 +1540,72 @@ async function openQueuePlaylistDialog() {
 }
 
 function closeQueuePlaylistDialog() {
-  const dialog = $("#queue-playlist-dialog");
-  if (typeof dialog.close === "function") dialog.close();
-  else dialog.hidden = true;
+  return closeDialog($("#queue-playlist-dialog"));
+}
+
+// ---------- dialogs ----------
+// The exit plays from [data-closing] while the dialog is still in the top layer, and only then does it really
+// close. Transitioning display/overlay would do the same natively, but only Chromium can animate that exit.
+async function closeDialog(dialog, value) {
+  if (!dialog) return;
+  if (typeof dialog.close !== "function") { dialog.hidden = true; return; }
+  if (!dialog.open || dialog.hasAttribute?.("data-closing")) return;
+  if (!prefersReducedMotion() && typeof dialog.getAnimations === "function") {
+    dialog.setAttribute("data-closing", "");
+    const animations = dialog.getAnimations({ subtree: true });
+    if (animations.length) await Promise.race([Promise.allSettled(animations.map(animation => animation.finished)), wait(400)]);
+    if (!dialog.hasAttribute("data-closing")) return;
+    dialog.removeAttribute("data-closing");
+  }
+  dialog.close(value);
+}
+
+// Esc and a click on the backdrop (closedby="any") close through closeDialog too, so they animate like the buttons.
+// Safari has no closedby yet: there a click outside the dialog's box closes it by hand.
+function setupDialogDismiss(dialog, value = "cancel") {
+  if (!dialog?.addEventListener) return;
+  dialog.addEventListener("cancel", event => {
+    event.preventDefault();
+    void closeDialog(dialog, value);
+  });
+  if (typeof HTMLDialogElement === "undefined" || "closedBy" in HTMLDialogElement.prototype) return;
+  dialog.addEventListener("click", event => {
+    if (event.target !== dialog) return;
+    const rect = dialog.getBoundingClientRect();
+    const inside = rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
+    if (!inside) void closeDialog(dialog, value);
+  });
+}
+
+let confirmResolve = null;
+
+// Replaces window.confirm: same question, but in the app's own dialog (and a penguin) instead of the browser's grey box
+function confirmAction({ title, message, confirmLabel = "確定", cancelLabel = "先不要" }) {
+  const dialog = $("#confirm-dialog");
+  if (typeof dialog?.showModal !== "function") return Promise.resolve(window.confirm(message));
+  if (dialog.open) return Promise.resolve(false);
+  $("#confirm-dialog-title").textContent = title;
+  $("#confirm-dialog-message").textContent = message;
+  buttonLabel($("#confirm-dialog-accept")).textContent = confirmLabel;
+  buttonLabel($("#confirm-dialog-cancel")).textContent = cancelLabel;
+  dialog.returnValue = "";
+  dialog.showModal();
+  return new Promise(resolve => { confirmResolve = resolve; });
+}
+
+function setupConfirmDialog() {
+  const dialog = $("#confirm-dialog");
+  if (!dialog?.addEventListener) return;
+  $("#confirm-dialog-form")?.addEventListener?.("submit", event => {
+    event.preventDefault();
+    void closeDialog(dialog, event.submitter?.value === "confirm" ? "confirm" : "cancel");
+  });
+  dialog.addEventListener("close", () => {
+    const resolve = confirmResolve;
+    confirmResolve = null;
+    resolve?.(dialog.returnValue === "confirm");
+  });
+  setupDialogDismiss(dialog);
 }
 
 async function submitQueuePlaylistDialog(event) {
@@ -1525,7 +1686,15 @@ async function removeQueueItem(index, row) {
       const result = await api(`/api/queue/${index}?guild_id=${state.guildId}`, { method: "DELETE" });
       // let the row finish sliding out before the list closes the gap
       await wait(180);
+      const removed = state.renderedQueue?.[index]?.title;
+      const hadFocus = Boolean(document.activeElement && row.contains?.(document.activeElement));
       applyQueue(result.queue);
+      if (removed) announceQueue(`已從佇列移除「${removed}」`);
+      // the focused row is gone: keep the keyboard on the song that took its place instead of dropping to <body>
+      if (hadFocus) {
+        const rows = $$(".queue-item", $("#queue-list"));
+        rows[Math.min(index, rows.length - 1)]?.querySelector?.(".queue-remove")?.focus?.();
+      }
     } catch (error) {
       row.classList.remove("is-removing");
       toast(error.message, "error");
@@ -1539,6 +1708,8 @@ async function reorderQueue(source, target) {
     try {
       const result = await api("/api/queue/reorder", { method: "POST", body: { guild_id: state.guildId, source_index: source, target_index: target } });
       applyQueue(result.queue);
+      const moved = result.queue?.[target]?.title;
+      if (moved) announceQueue(`已把「${moved}」移到第 ${target + 1} 首`);
     } catch (error) {
       renderQueue(state.player?.queue || []);
       toast(error.message, "error");
@@ -1585,6 +1756,23 @@ async function refreshSnapshot() {
   } catch (error) {
     setConnected(false, "連線中斷");
   }
+}
+
+// Usually left open in a second window beside Discord: a hidden tab stops polling instead of asking every 2 s,
+// and catches up the moment it is shown again. One snapshot at a time, so a slow bot never stacks requests.
+const SNAPSHOT_INTERVAL = 2000;
+let snapshotInFlight = false;
+
+async function pollSnapshot() {
+  if (document.hidden || snapshotInFlight) return;
+  snapshotInFlight = true;
+  try { await refreshSnapshot(); }
+  finally { snapshotInFlight = false; }
+}
+
+// shown again after a while in the background: catch up now instead of on the next tick
+function resumeSnapshotPolling() {
+  if (!document.hidden) void pollSnapshot();
 }
 
 function animateProgress() {
@@ -1966,7 +2154,12 @@ async function createPlaylist(event) {
 async function deletePlaylist() {
   const playlist = state.playlists.find(item => item.name === state.currentPlaylist);
   if (!playlist || playlist.deletable !== true) return;
-  if (!window.confirm(`確定刪除播放清單「${playlist.name}」？這會移除 ${playlist.tracks.length} 首歌曲。`)) return;
+  const confirmed = await confirmAction({
+    title: "刪除這個播放清單？",
+    message: `「${playlist.name}」和裡面的 ${playlist.tracks.length} 首歌會一起刪掉，刪了就救不回來。`,
+    confirmLabel: "刪除",
+  });
+  if (!confirmed) return;
 
   return runMutation(async () => {
     try {
@@ -2087,7 +2280,12 @@ function permissionControl(group, option, row) {
 async function permissionGroupAction(action, source = "", sourceLabel = source) {
   let name = "";
   if (action === "delete") {
-    if (!window.confirm(`確定刪除權限群組「${sourceLabel}」？`)) return;
+    const confirmed = await confirmAction({
+      title: "刪除權限群組？",
+      message: `「${sourceLabel}」刪除後無法復原。`,
+      confirmLabel: "刪除",
+    });
+    if (!confirmed) return;
   } else {
     const label = action === "create" ? "新群組名稱" : action === "clone" ? `複製「${sourceLabel}」為` : `將「${sourceLabel}」重新命名為`;
     name = window.prompt(label) || "";
@@ -2140,7 +2338,12 @@ async function loadPermissions() {
 
 async function requestRestart(mode) {
   const label = mode === "soft" ? "軟重啟" : "完整重啟";
-  if (!window.confirm(`確定執行${label}？播放與 Discord 連線會暫時中斷。`)) return;
+  const confirmed = await confirmAction({
+    title: `要${label}嗎？`,
+    message: "播放與 Discord 連線會暫時中斷，控制台會自動等 糖音機 回來。",
+    confirmLabel: label,
+  });
+  if (!confirmed) return;
   const layer = $("#reconnect-layer");
   $("strong", layer).textContent = `正在執行${label}`;
   $("p", layer).textContent = "關閉連線後，控制台會自動等待 糖音機 回來。";
@@ -2596,7 +2799,7 @@ function isTypingTarget(target) {
 // Space toggles playback and "/" jumps to the add-song field, the way streaming players do
 function handleShortcut(event) {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
-  if ($("#queue-playlist-dialog")?.open) return;
+  if ($("#queue-playlist-dialog")?.open || $("#confirm-dialog")?.open) return;
   if (event.key === "Escape" && isPlayerOpen()) { setPlayerOpen(false); return; }
   if (event.key === "Escape" && isQueueOpen()) { setQueueOpen(false); return; }
   const target = event.target;
@@ -2667,6 +2870,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#queue-add-to-playlist").addEventListener("click", openQueuePlaylistDialog);
   $("#queue-playlist-target").addEventListener("change", updateQueuePlaylistDialogMode);
   $("#queue-playlist-cancel").addEventListener("click", closeQueuePlaylistDialog);
+  setupDialogDismiss($("#queue-playlist-dialog"), "");
+  setupConfirmDialog();
   $("#queue-playlist-form").addEventListener("submit", submitQueuePlaylistDialog);
   $("#playlist-delete").addEventListener("click", deletePlaylist);
   $("#playlist-queue-all").addEventListener("click", () => { void queuePlaylistTracks(); });
@@ -2690,5 +2895,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", handleShortcut);
   window.addEventListener?.("resize", () => requestAnimationFrame(updateTrackTitleOverflow));
   requestAnimationFrame(updateTrackTitleOverflow);
-  refreshSnapshot(); setInterval(refreshSnapshot, 2000); setInterval(pollLogs, 3000); requestAnimationFrame(animateProgress);
+  document.addEventListener("visibilitychange", resumeSnapshotPolling);
+  pollSnapshot(); setInterval(pollSnapshot, SNAPSHOT_INTERVAL); setInterval(pollLogs, 3000); requestAnimationFrame(animateProgress);
 });

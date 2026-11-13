@@ -343,6 +343,25 @@ select option { background: var(--panel-2); color: var(--text); }
 
 .queue-list { position: relative; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; display: grid; align-content: start; gap: 2px; padding: 2px 0 12px; overscroll-behavior: contain; }
 .queue-list[hidden] { display: none; }
+/* scroll hints: a soft shade at the top or bottom edge while more songs are hidden past it. Sticky pseudo-elements of
+   the list itself, so no extra markup; their negative margins (plus the grid gap) keep them from taking space. */
+.queue-list::before, .queue-list::after {
+  content: ""; display: block; position: sticky; z-index: 3; height: 14px; pointer-events: none; opacity: 0; transition: opacity var(--motion-fast) var(--ease-out);
+}
+.queue-list::before { top: 0; margin-bottom: -16px; background: radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, .55), transparent); }
+.queue-list::after { bottom: 0; margin-top: -16px; background: radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, .55), transparent); }
+@supports (container-type: scroll-state) {
+  .queue-list { container-type: scroll-state; }
+  @container scroll-state(scrollable: block-start) { .queue-list::before { opacity: 1; } }
+  @container scroll-state(scrollable: block-end) { .queue-list::after { opacity: 1; } }
+}
+/* without scroll-state queries, each shade fades in over the first rem of scrolling away from its edge */
+@supports (not (container-type: scroll-state)) and (animation-timeline: scroll()) {
+  .queue-list::before, .queue-list::after { animation: queue-edge-shade linear both; animation-timeline: scroll(); }
+  .queue-list::before { animation-range: 0 1.5rem; }
+  .queue-list::after { animation-direction: reverse; animation-range: calc(100% - 1.5rem) 100%; }
+}
+@keyframes queue-edge-shade { to { opacity: 1; } }
 .queue-item {
   --i: 0; position: relative; display: grid; grid-template-columns: 28px 44px minmax(0, 1fr) 44px; column-gap: 12px; align-items: center;
   min-height: 60px; padding: 6px 10px 6px 6px; border-radius: 6px; cursor: pointer;
@@ -395,6 +414,15 @@ select option { background: var(--panel-2); color: var(--text); }
 
 .queue-copy { min-width: 0; padding: 4px 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; display: grid; gap: 2px; }
 .queue-copy strong { display: block; overflow: hidden; color: var(--text); font-size: 15px; font-weight: 650; line-height: 1.3; white-space: nowrap; text-overflow: ellipsis; }
+/* a cut-off title (app.js flags .is-truncated) scrolls to its end while the row is hovered or keyboard-focused,
+   slow at first so a passing pointer barely moves it; it snaps back behind the ellipsis when left */
+@media (prefers-reduced-motion: no-preference) {
+  .queue-item:is(:hover, :has(.queue-play-target:focus-visible)):not(.is-dragging) .queue-copy strong.is-truncated { text-overflow: clip; }
+  .queue-item:is(:hover, :has(.queue-play-target:focus-visible)):not(.is-dragging) .queue-copy strong.is-truncated > span {
+    display: inline-block; margin-inline-start: 100%; translate: calc(1px - 100%);
+    transition: margin-inline-start calc(var(--scroll-width, 200) * 9ms + 400ms) ease-in, translate calc(var(--scroll-width, 200) * 9ms + 400ms) ease-in;
+  }
+}
 .queue-copy small { display: block; overflow: hidden; color: var(--text-2); font-size: 13px; line-height: 1.3; white-space: nowrap; text-overflow: ellipsis; }
 .queue-copy .queue-meta-time { display: none; }
 .queue-copy:focus-visible { outline-offset: 2px; border-radius: 4px; }
@@ -407,7 +435,7 @@ select option { background: var(--panel-2); color: var(--text); }
 .queue-item:focus-within .queue-duration { opacity: 0; }
 @media (hover: hover) and (pointer: fine) { .queue-item:hover .queue-duration { opacity: 0; } }
 .queue-row-actions .icon-button { width: 30px; height: 30px; background: var(--panel-3); }
-.queue-row-actions .queue-handle { background: transparent; color: var(--text-2); cursor: grab; touch-action: none; }
+.queue-row-actions .queue-handle { background: transparent; color: var(--text-2); cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
 @media (hover: hover) and (pointer: fine) { .queue-row-actions .queue-handle:hover:not(:disabled) { background: var(--panel-3); color: var(--text); } }
 .queue-item.is-dragging .queue-handle { color: var(--accent); cursor: grabbing; }
 .is-mutating .queue-item, .is-mutating .playlist-track { cursor: progress; }
@@ -743,6 +771,19 @@ input[type="search"]::-webkit-search-cancel-button { filter: invert(1) brightnes
 .dialog-field[hidden] { display: none; }
 .dialog-field .select-field, .dialog-field .select-field select, .dialog-field input { width: 100%; }
 .playlist-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* closeDialog() sets data-closing and waits for these before the dialog really leaves the top layer */
+.playlist-dialog[open][data-closing] { animation: dialog-out 160ms var(--ease-out) both; }
+.playlist-dialog[open][data-closing]::backdrop { animation: backdrop-out 160ms var(--ease-out) both; }
+@keyframes dialog-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
+@keyframes backdrop-out { to { opacity: 0; } }
+/* a modal must not scroll the page behind it, neither from inside the dialog nor over the backdrop */
+dialog:modal { overscroll-behavior: contain; }
+dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
+.confirm-dialog { width: min(400px, calc(100vw - 32px)); }
+.confirm-dialog-body { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 18px; }
+.confirm-dialog-meme { display: block; width: 72px; height: 72px; object-fit: cover; border-radius: var(--radius-overlay); box-shadow: 0 10px 26px rgba(0, 0, 0, .4); }
+.confirm-dialog .playlist-dialog-heading h2 { font-size: 20px; }
+.confirm-dialog .playlist-dialog-heading p { font-size: 14.5px; line-height: 1.55; overflow-wrap: anywhere; }
 
 /* first visit: an invitation to try 3.0, which never comes back once a version is picked or 不再顯示 is ticked */
 .ui-intro {
